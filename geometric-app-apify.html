@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GEO metric — LLM Visibility Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px;scroll-behavior:smooth}
+
+:root{
+  --ink:#0c0c0b;
+  --paper:#f5f2ec;
+  --card:#ffffff;
+  --signal:#e8341a;
+  --dim:#7b786f;
+  --line:#e2ddd6;
+  --success:#1a8a4a;
+  --warn:#b06010;
+  --danger:#c42222;
+  --green-bg:#eaf5ee;
+  --amber-bg:#fef4e6;
+  --red-bg:#fdeaea;
+  --shadow:0 1px 3px rgba(0,0,0,.07),0 4px 14px rgba(0,0,0,.05);
+  --shadow-lg:0 2px 8px rgba(0,0,0,.1),0 16px 48px rgba(0,0,0,.12);
+}
+
+body{background:var(--paper);color:var(--ink);font-family:'DM Mono',monospace;font-size:.9rem;line-height:1.6;-webkit-font-smoothing:antialiased}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");opacity:.5}
+
+/* ── SHELL ── */
+.shell{display:grid;grid-template-columns:220px 1fr;grid-template-rows:56px 1fr;min-height:100vh}
+
+/* ── TOPBAR ── */
+.topbar{grid-column:1/-1;background:var(--ink);display:flex;align-items:center;padding:0 24px;gap:16px;position:sticky;top:0;z-index:100;border-bottom:1px solid #1e1e1c}
+.logo{font-family:'Syne',sans-serif;font-weight:800;font-size:1.1rem;color:white;letter-spacing:-.03em;display:flex;align-items:center;gap:8px;margin-right:auto;text-decoration:none;cursor:pointer}
+.logo-dot{width:7px;height:7px;background:var(--signal);border-radius:50%;animation:pulse 2.4s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.6)}}
+.topbar-badge{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:#555;border:1px solid #2a2a28;border-radius:3px;padding:3px 8px}
+.user-btn{width:32px;height:32px;border-radius:50%;background:var(--signal);color:white;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:700;font-size:.8rem;cursor:pointer;border:none}
+
+/* ── SIDEBAR ── */
+.sidebar{background:var(--ink);padding:16px 0;display:flex;flex-direction:column;gap:1px;border-right:1px solid #1a1a18}
+.nav-sec{font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;color:#3a3a38;padding:14px 20px 4px;margin-top:6px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;font-size:.78rem;color:#777;cursor:pointer;border:none;background:none;width:100%;text-align:left;transition:color .15s,background .15s;border-left:2px solid transparent;font-family:'DM Mono',monospace;letter-spacing:.01em}
+.nav-item:hover{color:#ccc;background:rgba(255,255,255,.04)}
+.nav-item.active{color:white;background:rgba(255,255,255,.07);border-left-color:var(--signal)}
+.sidebar-foot{margin-top:auto;padding:16px 20px;border-top:1px solid #1e1e1c}
+.sidebar-foot .label{font-size:.68rem;color:#444;margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase}
+.key-row{display:flex;gap:6px}
+.key-row input{flex:1;background:#161614;border:1px solid #2a2a28;color:#aaa;font-family:'DM Mono',monospace;font-size:.72rem;padding:6px 8px;border-radius:5px;outline:none}
+.key-row input:focus{border-color:var(--signal)}
+.key-save{background:var(--signal);color:white;border:none;border-radius:5px;padding:6px 10px;cursor:pointer;font-size:.72rem;font-family:'DM Mono',monospace;white-space:nowrap}
+.key-status{font-size:.68rem;margin-top:5px}
+.key-ok{color:#4ade80}.key-no{color:#f87171}
+
+/* ── MAIN ── */
+.main{background:var(--paper);overflow-y:auto;padding:32px 40px}
+
+/* ── PAGES ── */
+.page{display:none}
+.page.active{display:block;animation:fadeIn .25s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+.page-hd{margin-bottom:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.page-title{font-family:'DM Serif Display',serif;font-size:1.9rem;line-height:1.1;letter-spacing:-.02em}
+.page-sub{font-size:.78rem;color:var(--dim);margin-top:4px}
+
+/* ── CARDS ── */
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:24px;box-shadow:var(--shadow)}
+.card-sm{padding:16px 20px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+
+/* ── FORMS ── */
+.field{margin-bottom:16px}
+.field label{display:block;font-size:.72rem;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+.field input,.field textarea,.field select{width:100%;background:var(--paper);border:1px solid var(--line);color:var(--ink);font-family:'DM Mono',monospace;font-size:.87rem;padding:10px 14px;border-radius:6px;outline:none;transition:border-color .15s}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--signal)}
+.field textarea{min-height:86px;resize:vertical}
+.field .hint{font-size:.7rem;color:var(--dim);margin-top:4px}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+/* tags */
+.tags-wrap{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px;min-height:16px}
+.tag{display:flex;align-items:center;gap:5px;background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:3px 10px 3px 12px;font-size:.75rem;color:var(--ink)}
+.tag-x{background:none;border:none;cursor:pointer;color:var(--dim);font-size:14px;line-height:1;padding:0 2px}
+.tag-x:hover{color:var(--signal)}
+.tag-row{display:flex;gap:8px;margin-top:8px}
+.tag-row input{flex:1}
+.tag-add{background:var(--ink);color:white;border:none;border-radius:6px;padding:0 14px;height:40px;cursor:pointer;font-family:'DM Mono',monospace;font-size:.8rem;white-space:nowrap}
+.tag-add:hover{background:#333}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:10px 20px;border-radius:6px;font-family:'DM Mono',monospace;font-size:.82rem;font-weight:500;cursor:pointer;border:none;transition:all .15s;text-decoration:none}
+.btn-primary{background:var(--signal);color:white}
+.btn-primary:hover{background:#c82d12;transform:translateY(-1px);box-shadow:0 4px 14px rgba(232,52,26,.3)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn-ghost:hover{border-color:var(--ink);background:rgba(0,0,0,.03)}
+.btn-sm{padding:7px 14px;font-size:.77rem}
+.btn-full{width:100%;justify-content:center}
+
+/* ── STATS ── */
+.stat-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;box-shadow:var(--shadow)}
+.stat-lbl{font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+.stat-val{font-family:'DM Serif Display',serif;font-size:2rem;line-height:1;color:var(--ink)}
+.stat-sub{font-size:.7rem;color:var(--dim);margin-top:5px}
+
+/* ── SCORE RING ── */
+.score-hero{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px;margin-bottom:14px;box-shadow:var(--shadow)}
+.ring-wrap{position:relative;width:100px;height:100px;flex-shrink:0}
+.ring-svg{transform:rotate(-90deg)}
+.ring-bg{fill:none;stroke:var(--line);stroke-width:7}
+.ring-fill{fill:none;stroke-width:7;stroke-linecap:round;transition:stroke-dashoffset 1.3s cubic-bezier(.4,0,.2,1)}
+.ring-txt{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring-num{font-family:'DM Serif Display',serif;font-size:1.9rem;line-height:1}
+.ring-den{font-size:.62rem;color:var(--dim);letter-spacing:.05em}
+.score-label{font-family:'DM Serif Display',serif;font-size:1.35rem;margin-bottom:5px}
+.score-desc{font-size:.8rem;color:var(--dim);line-height:1.7;max-width:400px}
+
+/* ── TABS ── */
+.tabs{display:flex;border-bottom:1px solid var(--line);margin-bottom:20px;gap:2px}
+.tab-btn{padding:9px 16px;font-family:'DM Mono',monospace;font-size:.8rem;color:var(--dim);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s;white-space:nowrap}
+.tab-btn:hover{color:var(--ink)}
+.tab-btn.active{color:var(--ink);border-bottom-color:var(--signal);font-weight:500}
+.tab-pane{display:none}.tab-pane.active{display:block;animation:fadeIn .2s}
+
+/* ── QUERY CARDS ── */
+.qcard{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:10px;box-shadow:var(--shadow)}
+.qtop{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+.qtext{font-size:.85rem;font-weight:500;color:var(--ink);flex:1;line-height:1.5}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:.68rem;letter-spacing:.04em;padding:3px 10px;border-radius:20px;white-space:nowrap;font-weight:500}
+.b-ok{background:var(--green-bg);color:var(--success)}
+.b-no{background:var(--red-bg);color:var(--danger)}
+.b-par{background:var(--amber-bg);color:var(--warn)}
+.b-hi{background:var(--red-bg);color:var(--danger);border:1px solid #f9c0c0}
+.b-mid{background:var(--amber-bg);color:var(--warn);border:1px solid #f5d8a8}
+.b-lo{background:var(--green-bg);color:var(--success);border:1px solid #b8e8c8}
+.qanswer{font-size:.8rem;color:var(--dim);line-height:1.75;border-top:1px solid var(--line);padding-top:10px}
+.hl{background:#fef0c7;color:#92400e;border-radius:3px;padding:0 3px}
+.qmeta{display:flex;gap:12px;margin-top:8px;flex-wrap:wrap}
+.qmeta span{font-size:.7rem;color:var(--dim)}
+.qsources{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.qsources-label{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+.source-pill{display:inline-flex;align-items:center;gap:5px;background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:3px 10px;font-size:.72rem;color:var(--dim);margin:2px 3px 2px 0;text-decoration:none;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.source-pill:hover{border-color:var(--ink);color:var(--ink)}
+
+/* ── RECS ── */
+.rec-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:10px;display:flex;gap:14px;align-items:flex-start;box-shadow:var(--shadow)}
+.rec-icon{width:36px;height:36px;border-radius:8px;background:var(--paper);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px}
+.rec-body{flex:1;min-width:0}
+.rec-title{font-size:.88rem;font-weight:500;margin-bottom:4px}
+.rec-desc{font-size:.8rem;color:var(--dim);line-height:1.65}
+.rec-foot{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+.rec-lift{font-size:.72rem;color:var(--success);font-weight:500}
+
+/* ── BREAKDOWN ── */
+.brow{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+.blabel{font-size:.78rem;color:var(--dim);width:150px;flex-shrink:0}
+.btrack{flex:1;height:7px;background:var(--line);border-radius:4px;overflow:hidden}
+.bfill{height:100%;border-radius:4px;background:var(--signal);transition:width 1.2s cubic-bezier(.4,0,.2,1)}
+.bval{font-size:.78rem;font-weight:500;width:30px;text-align:right}
+
+/* ── SCAN SCREEN ── */
+.scan-center{max-width:520px;margin:40px auto;text-align:center}
+.scan-pulse{width:64px;height:64px;border-radius:50%;background:var(--red-bg);border:2px solid var(--signal);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:22px;animation:ring 1.8s ease-in-out infinite}
+@keyframes ring{0%,100%{box-shadow:0 0 0 0 rgba(232,52,26,.35)}50%{box-shadow:0 0 0 18px rgba(232,52,26,0)}}
+.scan-title{font-family:'DM Serif Display',serif;font-size:1.5rem;margin-bottom:6px}
+.scan-sub{font-size:.82rem;color:var(--dim);margin-bottom:24px}
+.scan-log{background:var(--ink);border-radius:10px;padding:18px 20px;font-family:'DM Mono',monospace;font-size:.73rem;min-height:180px;max-height:260px;overflow-y:auto;text-align:left;color:#777;line-height:2}
+.ll{display:flex;gap:10px}.lc-ok{color:#4ade80}.lc-run{color:#ff6b4a}.lc-dim{color:#444}
+.prog-wrap{height:3px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:16px}
+.prog-fill{height:100%;background:var(--signal);border-radius:3px;transition:width .5s;width:0%}
+
+/* ── BRAND ROWS ── */
+.brand-row{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:15px 20px;margin-bottom:9px;display:flex;align-items:center;gap:14px;cursor:pointer;box-shadow:var(--shadow);transition:border-color .15s,transform .15s}
+.brand-row:hover{border-color:var(--signal);transform:translateY(-1px)}
+.b-avatar{width:40px;height:40px;border-radius:8px;color:white;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:700;font-size:.9rem;flex-shrink:0}
+.b-info{flex:1;min-width:0}
+.b-name{font-size:.9rem;font-weight:500}
+.b-ind{font-size:.72rem;color:var(--dim)}
+.b-date{font-size:.7rem;color:var(--dim)}
+.b-score{font-family:'DM Serif Display',serif;font-size:1.4rem;display:flex;flex-direction:column;align-items:flex-end;line-height:1}
+.b-score-sub{font-family:'DM Mono',monospace;font-size:.62rem;color:var(--dim);margin-top:2px}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:60px 20px;color:var(--dim);font-size:.82rem}
+.empty-icon{font-size:2.4rem;margin-bottom:14px;opacity:.35}
+.empty-title{font-family:'DM Serif Display',serif;font-size:1.3rem;color:var(--ink);margin-bottom:8px}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:24px;right:24px;z-index:9998;background:var(--ink);color:white;padding:11px 20px;border-radius:8px;font-size:.8rem;box-shadow:var(--shadow-lg);opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none}
+#toast.show{opacity:1;transform:translateY(0)}
+#toast.toast-err{background:var(--danger)}
+
+/* ── MODAL ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:500;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .2s}
+.overlay.open{opacity:1;pointer-events:all}
+.modal{background:var(--card);border-radius:14px;padding:32px;max-width:480px;width:92%;box-shadow:var(--shadow-lg);transform:scale(.95);transition:transform .2s}
+.overlay.open .modal{transform:scale(1)}
+.modal-title{font-family:'DM Serif Display',serif;font-size:1.45rem;margin-bottom:6px}
+.modal-sub{font-size:.82rem;color:var(--dim);line-height:1.65;margin-bottom:20px}
+.modal-foot{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+
+/* ── SETTINGS ── */
+.set-sec{margin-bottom:28px}
+.set-lbl{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.plan-card{border:2px solid var(--signal);border-radius:10px;padding:20px;background:rgba(232,52,26,.03)}
+.plan-name{font-family:'DM Serif Display',serif;font-size:1.25rem}
+.plan-feats{list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:5px}
+.plan-feats li{font-size:.8rem;color:var(--dim);display:flex;gap:8px}
+.plan-feats li::before{content:'→';color:var(--signal)}
+
+/* ── RESPONSIVE ── */
+@media(max-width:860px){
+  .shell{grid-template-columns:1fr;grid-template-rows:56px auto 1fr}
+  .sidebar{flex-direction:row;overflow-x:auto;padding:8px;gap:2px;border-right:none;border-bottom:1px solid #1a1a18}
+  .sidebar-foot,.nav-sec{display:none}
+  .nav-item{flex-direction:column;gap:3px;padding:8px 10px;font-size:.63rem;border-left:none;border-bottom:2px solid transparent;min-width:60px}
+  .nav-item.active{border-bottom-color:var(--signal);border-left:none}
+  .main{padding:20px 16px}
+  .g3,.g4{grid-template-columns:1fr 1fr}
+  .frow{grid-template-columns:1fr}
+  .score-hero{grid-template-columns:1fr;justify-items:center}
+}
+@media(max-width:520px){.g2,.g3,.g4{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<!-- API KEY MODAL -->
+<div class="overlay" id="modal-key">
+  <div class="modal">
+    <div class="modal-title">Connect your Apify account</div>
+    <div class="modal-sub">GEO metric uses Apify to query real AI search engines like Perplexity. Your key is stored locally in your browser — never sent to any third party.</div>
+    <div class="field">
+      <label>Apify API Token</label>
+      <input type="password" id="modal-key-inp" placeholder="apify_api_..." autocomplete="off" />
+      <div class="hint">Get your token at <a href="https://console.apify.com/account/integrations" target="_blank" style="color:var(--signal)">console.apify.com → Integrations</a></div>
+    </div>
+    <div class="field">
+      <label>Backend URL (your proxy server)</label>
+      <input type="text" id="modal-server-inp" placeholder="https://your-app.railway.app" />
+      <div class="hint">Deploy <code style="background:var(--paper);padding:1px 5px;border-radius:3px">server.js</code> on Railway or Render, paste the URL here.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-key')">Later</button>
+      <button class="btn btn-primary btn-sm" onclick="saveModalKey()">Save & continue →</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHELL -->
+<div class="shell">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="logo" onclick="navTo('dashboard')">
+      <div class="logo-dot"></div> GEO metric
+    </div>
+    <span class="topbar-badge">POWERED BY PERPLEXITY</span>
+    <button class="user-btn" onclick="navTo('settings')" title="Settings">Y</button>
+  </header>
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <span class="nav-sec">Workspace</span>
+    <button class="nav-item active" id="nav-dashboard" onclick="navTo('dashboard')">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Dashboard
+    </button>
+    <button class="nav-item" id="nav-newbrand" onclick="navTo('newbrand')">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      New scan
+    </button>
+    <span class="nav-sec">Reports</span>
+    <button class="nav-item" id="nav-results" onclick="navTo('results')">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Last report
+    </button>
+    <button class="nav-item" id="nav-recs" onclick="navTo('recs')">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      Actions
+    </button>
+    <span class="nav-sec">Account</span>
+    <button class="nav-item" id="nav-settings" onclick="navTo('settings')">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Settings
+    </button>
+
+    <div class="sidebar-foot">
+      <div class="label">Apify Token</div>
+      <div class="key-row">
+        <input type="password" id="sb-key" placeholder="apify_api_..." autocomplete="off" />
+        <button class="key-save" onclick="saveKey()">Save</button>
+      </div>
+      <div class="key-status" id="key-status"></div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-hd">
+        <div><div class="page-title">Dashboard</div><div class="page-sub">Brands tracked via real Perplexity queries</div></div>
+        <button class="btn btn-primary btn-sm" onclick="navTo('newbrand')">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New scan
+        </button>
+      </div>
+      <div id="brands-list">
+        <div class="empty">
+          <div class="empty-icon">◎</div>
+          <div class="empty-title">No brands tracked yet</div>
+          <p style="margin-bottom:20px">Run your first scan to get a real GEO Score from live Perplexity results.</p>
+          <button class="btn btn-primary" onclick="navTo('newbrand')">Scan my first brand →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- NEW SCAN -->
+    <div class="page" id="page-newbrand">
+      <div class="page-hd">
+        <div><div class="page-title">New brand scan</div><div class="page-sub">We'll query Perplexity with real search questions about your brand</div></div>
+      </div>
+      <div class="card" style="max-width:680px">
+        <div class="frow">
+          <div class="field"><label>Brand name *</label><input type="text" id="f-brand" placeholder="e.g. Reborn Athletics" /></div>
+          <div class="field"><label>Website / domain</label><input type="text" id="f-domain" placeholder="rebornathletics.com" /></div>
+        </div>
+        <div class="field"><label>What does your brand do? *</label><textarea id="f-desc" placeholder="Describe your offer, audience, and what makes you different from competitors..."></textarea></div>
+        <div class="frow">
+          <div class="field">
+            <label>Industry *</label>
+            <select id="f-industry">
+              <option value="">Select...</option>
+              <option>Running & athletics</option><option>Fashion & streetwear</option>
+              <option>Fitness & wellness</option><option>Technology / SaaS</option>
+              <option>E-commerce</option><option>Food & beverage</option>
+              <option>Media & content</option><option>Consulting & services</option>
+              <option>Fintech</option><option>Healthcare</option>
+              <option>Education</option><option>Travel & hospitality</option>
+              <option>Real estate</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field"><label>Market / geography</label><input type="text" id="f-market" placeholder="Morocco, MENA, Global…" /></div>
+        </div>
+        <div class="field">
+          <label>Key topics &amp; keywords</label>
+          <div class="tags-wrap" id="tag-list"></div>
+          <div class="tag-row">
+            <input type="text" id="tag-inp" placeholder="Add a topic or keyword, press Enter" />
+            <button class="tag-add" onclick="addTag()">Add</button>
+          </div>
+          <div class="hint">Topics users search when they could discover your brand.</div>
+        </div>
+        <div class="field">
+          <label>Competitors (optional)</label>
+          <input type="text" id="f-comp" placeholder="Nike, Adidas, On Running" />
+          <div class="hint">Comma-separated — used to build comparison queries.</div>
+        </div>
+        <div class="field">
+          <label>Number of queries</label>
+          <select id="f-qcount">
+            <option value="6">6 queries — fast (~2 min, ~$0.12)</option>
+            <option value="8" selected>8 queries — standard (~3 min, ~$0.16)</option>
+            <option value="12">12 queries — deep (~5 min, ~$0.24)</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-full" id="scan-btn" onclick="startScan()" style="margin-top:8px">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          Run Perplexity scan
+        </button>
+        <div style="text-align:center;font-size:.72rem;color:var(--dim);margin-top:10px">Each query costs ~$0.02 via Apify · Perplexity answers are real, live results</div>
+      </div>
+    </div>
+
+    <!-- SCANNING -->
+    <div class="page" id="page-scan">
+      <div class="scan-center">
+        <div class="scan-pulse">◎</div>
+        <div class="scan-title">Scanning Perplexity…</div>
+        <div class="scan-sub" id="scan-sub-txt">Sending real queries to Perplexity via Apify and analyzing brand visibility.</div>
+        <div class="scan-log" id="scan-log"></div>
+        <div class="prog-wrap"><div class="prog-fill" id="prog"></div></div>
+      </div>
+    </div>
+
+    <!-- RESULTS -->
+    <div class="page" id="page-results">
+      <div class="page-hd">
+        <div><div class="page-title" id="res-title">GEO Report</div><div class="page-sub" id="res-sub">Powered by live Perplexity queries</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" onclick="navTo('dashboard')">← Dashboard</button>
+          <button class="btn btn-primary btn-sm" onclick="navTo('newbrand')">New scan</button>
+        </div>
+      </div>
+
+      <div class="score-hero">
+        <div class="ring-wrap">
+          <svg class="ring-svg" width="100" height="100" viewBox="0 0 100 100">
+            <circle class="ring-bg" cx="50" cy="50" r="43"/>
+            <circle class="ring-fill" id="ring-fill" cx="50" cy="50" r="43" stroke-dasharray="270.2" stroke-dashoffset="270.2" stroke="var(--signal)"/>
+          </svg>
+          <div class="ring-txt"><div class="ring-num" id="r-score">—</div><div class="ring-den">/100</div></div>
+        </div>
+        <div>
+          <div class="score-label" id="r-label">Computing…</div>
+          <div class="score-desc" id="r-summary"></div>
+        </div>
+      </div>
+
+      <div class="g4" style="margin-bottom:18px">
+        <div class="stat-card"><div class="stat-lbl">Queries cited</div><div class="stat-val" id="s-cited">—</div><div class="stat-sub" id="s-cited-sub"></div></div>
+        <div class="stat-card"><div class="stat-lbl">Avg sentiment</div><div class="stat-val" id="s-sent">—</div><div class="stat-sub" id="s-sent-sub"></div></div>
+        <div class="stat-card"><div class="stat-lbl">Sources found</div><div class="stat-val" id="s-sources">—</div><div class="stat-sub">Across all queries</div></div>
+        <div class="stat-card"><div class="stat-lbl">Quick wins</div><div class="stat-val" id="s-wins">—</div><div class="stat-sub">High-priority actions</div></div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('queries',this)">Query results</button>
+        <button class="tab-btn" onclick="switchTab('breakdown',this)">Score breakdown</button>
+      </div>
+      <div class="tab-pane active" id="tab-queries"><div id="queries-out"></div></div>
+      <div class="tab-pane" id="tab-breakdown"><div id="breakdown-out" style="max-width:480px;padding-top:4px"></div></div>
+    </div>
+
+    <!-- ACTIONS -->
+    <div class="page" id="page-recs">
+      <div class="page-hd"><div><div class="page-title">Optimization actions</div><div class="page-sub">Ranked by priority · based on real Perplexity citation patterns</div></div></div>
+      <div id="recs-out">
+        <div class="empty"><div class="empty-icon">⚡</div><div class="empty-title">No recommendations yet</div><p>Run a scan to get your personalized GEO action plan.</p></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="page-settings">
+      <div class="page-hd"><div><div class="page-title">Settings</div><div class="page-sub">API keys and configuration</div></div></div>
+      <div style="max-width:560px">
+        <div class="set-sec">
+          <div class="set-lbl">Apify API Token</div>
+          <div class="card card-sm">
+            <div class="field" style="margin-bottom:10px"><label>Token</label><input type="password" id="st-key" placeholder="apify_api_..." autocomplete="off" /><div class="hint">Find at <a href="https://console.apify.com/account/integrations" target="_blank" style="color:var(--signal)">console.apify.com → Integrations</a>. Stored locally in your browser.</div></div>
+            <div style="display:flex;gap:10px;align-items:center"><button class="btn btn-primary btn-sm" onclick="saveKeyFromSettings()">Save token</button><span id="st-status" style="font-size:.78rem;color:var(--dim)"></span></div>
+          </div>
+        </div>
+        <div class="set-sec">
+          <div class="set-lbl">Backend proxy URL</div>
+          <div class="card card-sm">
+            <div class="field" style="margin-bottom:10px"><label>Server URL</label><input type="text" id="st-server" placeholder="https://your-app.railway.app" /><div class="hint">Deploy <code style="background:var(--paper);padding:1px 5px;border-radius:3px">server.js</code> and paste your live URL here.</div></div>
+            <div style="display:flex;gap:10px;align-items:center"><button class="btn btn-primary btn-sm" onclick="saveServerUrl()">Save URL</button><span id="st-server-status" style="font-size:.78rem;color:var(--dim)"></span></div>
+          </div>
+        </div>
+        <div class="set-sec">
+          <div class="set-lbl">Current plan</div>
+          <div class="plan-card">
+            <div class="plan-name">Free tier — bring your own Apify key</div>
+            <div style="font-size:.78rem;color:var(--dim);margin-top:2px">~$0.02 per Perplexity query via Apify</div>
+            <ul class="plan-feats">
+              <li>Unlimited brand scans</li><li>Real Perplexity AI answers</li>
+              <li>GEO Score + full breakdown</li><li>AI-generated recommendations</li>
+              <li>Source citation tracking</li><li>Scan history (local)</li>
+            </ul>
+          </div>
+        </div>
+        <div class="set-sec">
+          <div class="set-lbl">Data</div>
+          <div class="card card-sm" style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+            <div><div style="font-size:.85rem;font-weight:500">Clear scan history</div><div style="font-size:.75rem;color:var(--dim);margin-top:2px">Removes all stored brands and reports</div></div>
+            <button class="btn btn-ghost btn-sm" onclick="clearHistory()" style="border-color:#f9c0c0;color:var(--danger);flex-shrink:0">Clear data</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+/* ══ STATE ══════════════════════════════════════ */
+let tags = [];
+let brands = [];
+let currentBrand = null;
+
+/* ══ INIT ═══════════════════════════════════════ */
+(function init() {
+  try { brands = JSON.parse(localStorage.getItem('geo_brands') || '[]'); } catch(e){}
+  const key    = ls('apify_key');
+  const server = ls('geo_server');
+  if (key) {
+    set('sb-key', key); set('st-key', key); updateKeyStatus(true);
+  }
+  if (server) {
+    set('st-server', server);
+    document.getElementById('st-server-status').textContent = 'Saved ✓';
+  }
+  if (!key || !server) {
+    setTimeout(() => document.getElementById('modal-key').classList.add('open'), 400);
+  }
+  renderDashboard();
+})();
+
+/* ══ HELPERS ════════════════════════════════════ */
+function ls(k, v) { if (v !== undefined) localStorage.setItem(k, v); else return localStorage.getItem(k) || ''; }
+function set(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
+function get(id) { return (document.getElementById(id)?.value || '').trim(); }
+function getNum(id) { return parseInt(document.getElementById(id)?.value) || 8; }
+
+/* ══ NAV ════════════════════════════════════════ */
+function navTo(p) {
+  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('page-' + p)?.classList.add('active');
+  document.getElementById('nav-' + p)?.classList.add('active');
+  if ((p === 'results' || p === 'recs') && !currentBrand) { navTo('dashboard'); }
+}
+
+/* ══ TAGS ═══════════════════════════════════════ */
+function addTag() {
+  const inp = document.getElementById('tag-inp');
+  const v = inp.value.trim();
+  if (!v || tags.includes(v)) { inp.value = ''; return; }
+  tags.push(v); renderTags(); inp.value = '';
+}
+document.addEventListener('keydown', e => { if (e.target.id === 'tag-inp' && e.key === 'Enter') { e.preventDefault(); addTag(); } });
+function removeTag(i) { tags.splice(i, 1); renderTags(); }
+function renderTags() {
+  document.getElementById('tag-list').innerHTML = tags.map((t,i) => `<div class="tag">${t}<button class="tag-x" onclick="removeTag(${i})">×</button></div>`).join('');
+}
+
+/* ══ API KEY / SERVER ═══════════════════════════ */
+function saveKey() {
+  const k = get('sb-key'); if (!k) return;
+  ls('apify_key', k); set('st-key', k); updateKeyStatus(true); toast('Apify token saved ✓');
+}
+function saveKeyFromSettings() {
+  const k = get('st-key'); if (!k) return;
+  ls('apify_key', k); set('sb-key', k); updateKeyStatus(true);
+  document.getElementById('st-status').textContent = 'Saved ✓';
+  document.getElementById('st-status').style.color = 'var(--success)';
+  toast('Apify token saved ✓');
+}
+function saveServerUrl() {
+  const u = get('st-server'); if (!u) return;
+  ls('geo_server', u);
+  document.getElementById('st-server-status').textContent = 'Saved ✓';
+  document.getElementById('st-server-status').style.color = 'var(--success)';
+  toast('Server URL saved ✓');
+}
+function saveModalKey() {
+  const k = get('modal-key-inp');
+  const s = get('modal-server-inp');
+  if (!k) { toast('Please enter your Apify token', true); return; }
+  ls('apify_key', k); set('sb-key', k); set('st-key', k); updateKeyStatus(true);
+  if (s) { ls('geo_server', s); set('st-server', s); }
+  closeModal('modal-key'); toast('Keys saved ✓');
+}
+function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
+function updateKeyStatus(ok) {
+  const el = document.getElementById('key-status');
+  if (!el) return;
+  el.textContent = ok ? '● Connected' : '● No token';
+  el.className = 'key-status ' + (ok ? 'key-ok' : 'key-no');
+}
+
+/* ══ SCAN FLOW ══════════════════════════════════ */
+function log(msg, cls='lc-dim') {
+  const box = document.getElementById('scan-log');
+  const icon = cls==='lc-ok'?'✓':cls==='lc-run'?'→':'·';
+  box.innerHTML += `<div class="ll"><span class="${cls}">${icon}</span><span>${msg}</span></div>`;
+  box.scrollTop = box.scrollHeight;
+}
+function setP(p) { document.getElementById('prog').style.width = p + '%'; }
+
+async function startScan() {
+  const brand = get('f-brand'), domain = get('f-domain'), desc = get('f-desc');
+  const industry = get('f-industry'), market = get('f-market'), comp = get('f-comp');
+  const qcount = getNum('f-qcount');
+  const server = ls('geo_server');
+
+  if (!brand) return toast('Please enter a brand name', true);
+  if (!desc)  return toast('Please describe your brand', true);
+  if (!industry) return toast('Please select an industry', true);
+  if (!ls('apify_key')) { document.getElementById('modal-key').classList.add('open'); return; }
+  if (!server) return toast('Please set your backend server URL in Settings', true);
+
+  const b = { id: Date.now(), name: brand, domain, desc, industry, market, comp, tags: [...tags] };
+  document.getElementById('scan-log').innerHTML = '';
+  setP(0); navTo('scan');
+
+  try {
+    log(`Scanning "${brand}" on Perplexity…`, 'lc-run');
+    setP(5);
+
+    // 1. Generate queries
+    log('Building probe queries…', 'lc-run');
+    const queries = buildQueries(b, qcount);
+    log(`${queries.length} queries ready`, 'lc-ok');
+    setP(12);
+
+    // 2. Run each query via backend proxy → Apify → Perplexity
+    const results = [];
+    for (let i = 0; i < queries.length; i++) {
+      const q = queries[i];
+      log(`Querying Perplexity: "${q.slice(0,52)}${q.length>52?'…':''}"`, 'lc-run');
+      const r = await queryViaProxy(q, brand, server);
+      results.push({ query: q, ...r });
+      setP(12 + Math.round((i + 1) / queries.length * 70));
+      log(`${r.cited ? '✓ Cited' : '✗ Not cited'} · sentiment: ${r.sentiment}`, 'lc-ok');
+    }
+
+    log('Computing GEO Score…', 'lc-run');
+    setP(88);
+    const analysis = computeScore(b, results);
+    setP(98);
+    log(`GEO Score: ${analysis.score}/100 — ${analysis.label}`, 'lc-ok');
+    log('Report ready.', 'lc-ok');
+    setP(100);
+
+    Object.assign(b, { score: analysis.score, label: analysis.label, summary: analysis.summary, results, analysis, date: new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) });
+    brands.unshift(b); localStorage.setItem('geo_brands', JSON.stringify(brands));
+    currentBrand = b;
+
+    renderResultsPage(b); renderRecsPage(b); renderDashboard();
+    setTimeout(() => { navTo('results'); document.getElementById('nav-results')?.classList.add('active'); }, 700);
+
+  } catch(err) {
+    log('Error: ' + err.message, 'lc-run');
+    document.getElementById('scan-sub-txt').textContent = 'Something went wrong. Check your server URL and Apify token.';
+    toast(err.message, true);
+  }
+}
+
+/* ══ QUERY BUILDER ══════════════════════════════ */
+function buildQueries(b, n) {
+  const brand = b.name, ind = b.industry;
+  const comps = b.comp ? b.comp.split(',').map(s=>s.trim()).filter(Boolean) : [];
+  const kw = b.tags.length ? b.tags[0] : ind;
+  const market = b.market || '';
+  const pool = [
+    `Tell me about ${brand}`,
+    `What is ${brand} and what do they offer?`,
+    `Best ${ind} brands${market ? ' in ' + market : ''}`,
+    `Top recommended ${ind} companies`,
+    `${kw} brands worth knowing`,
+    `Who are the best ${ind} companies for beginners?`,
+    comps.length ? `${brand} vs ${comps[0]}` : `What makes a good ${ind} brand?`,
+    comps.length > 1 ? `Compare ${brand} and ${comps[1]}` : `Is ${brand} a good choice for ${kw}?`,
+    `${brand} reviews and reputation`,
+    `What do people say about ${brand}?`,
+    `Best ${kw} options ${market ? 'in ' + market : 'right now'}`,
+    `${ind} brands recommended by experts`,
+  ];
+  return pool.slice(0, n);
+}
+
+/* ══ PROXY CALL ═════════════════════════════════ */
+async function queryViaProxy(query, brandName, serverUrl) {
+  const base = serverUrl.replace(/\/$/, '');
+  const res = await fetch(`${base}/scan/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, brandName })
+  });
+  if (!res.ok) throw new Error(`Server error ${res.status}: ${await res.text()}`);
+  return await res.json();
+}
+
+/* ══ LOCAL SCORING ══════════════════════════════ */
+function computeScore(b, results) {
+  const total = results.length;
+  const cited = results.filter(r => r.cited).length;
+  const sentMap = { positive: 1, neutral: 0, negative: -1, not_mentioned: 0 };
+  const avgSent = results.reduce((s,r) => s + (sentMap[r.sentiment]||0), 0) / total;
+  const totalSources = results.reduce((s,r) => s + (r.sources?.length||0), 0);
+
+  const citePct   = Math.round(cited / total * 100);
+  const sentPct   = Math.round((avgSent + 1) / 2 * 100);
+  const srcScore  = Math.min(100, Math.round(totalSources / total * 25));
+  const coverage  = Math.round(results.filter(r => r.answer?.length > 100).length / total * 100);
+
+  const score = Math.round(citePct * .45 + sentPct * .25 + srcScore * .15 + coverage * .15);
+
+  const label = score >= 75 ? 'Strong visibility'
+    : score >= 55 ? 'Growing presence'
+    : score >= 35 ? 'Limited visibility'
+    : 'Not yet visible';
+
+  const citedCount = cited;
+  const summary = citedCount === 0
+    ? `${b.name} was not mentioned in any of the ${total} Perplexity queries tested. The brand has no current footprint in AI search results — a strong opportunity to build from scratch.`
+    : `${b.name} was cited in ${citedCount} of ${total} Perplexity queries (${citePct}%). Sentiment is ${avgSent > 0.2 ? 'positive' : avgSent < -0.1 ? 'negative' : 'neutral'}, with ${totalSources} total sources found across results.`;
+
+  const breakdown = [
+    { label: 'Citation rate',    score: citePct },
+    { label: 'Sentiment quality',score: sentPct },
+    { label: 'Source authority', score: srcScore },
+    { label: 'Answer coverage',  score: coverage },
+    { label: 'Overall presence', score: score },
+  ];
+
+  const recs = generateRecs(b, results, { citePct, sentPct, srcScore, totalSources });
+
+  return { score, label, summary, breakdown, recommendations: recs };
+}
+
+function generateRecs(b, results, m) {
+  const recs = [];
+  const noCite = results.filter(r => !r.cited);
+  const negSent = results.filter(r => r.sentiment === 'negative');
+
+  if (m.citePct < 50) recs.push({ priority:'high', icon:'📝', title:'Publish authoritative content', description:`${b.name} is missing from ${100 - m.citePct}% of relevant queries. Create in-depth, FAQ-style content targeting exact question patterns Perplexity users ask.`, lift:'+12–18 pts' });
+  if (m.srcScore < 40) recs.push({ priority:'high', icon:'🔗', title:'Build credible backlinks & citations', description:`Low source authority detected. Get cited by industry publications, blogs, and directories so Perplexity can surface your brand with confidence.`, lift:'+8–14 pts' });
+  if (m.citePct < 30) recs.push({ priority:'high', icon:'🗂️', title:'Add structured data (schema.org)', description:`Implement Organization, Product, and FAQ schema on your website. Perplexity uses structured signals to identify and cite brands accurately.`, lift:'+6–10 pts' });
+  if (negSent.length > 0) recs.push({ priority:'medium', icon:'💬', title:'Address negative brand signals', description:`Negative sentiment detected in ${negSent.length} query response(s). Proactively respond to reviews and publish trust-building content.`, lift:'+5–8 pts' });
+  if (m.totalSources < results.length * 2) recs.push({ priority:'medium', icon:'📰', title:'Get featured in roundup articles', description:`Perplexity cites sources heavily. Pitch ${b.name} to "best of" lists, comparison articles, and industry guides in the ${b.industry} space.`, lift:'+6–10 pts' });
+  recs.push({ priority:'low', icon:'🗺️', title:'Claim and optimize knowledge panels', description:`Ensure ${b.name} has a complete, verified presence on Google Business, Crunchbase, and relevant directories. These feed AI knowledge graphs.`, lift:'+3–5 pts' });
+  recs.push({ priority:'low', icon:'📣', title:'Create content for comparison queries', description:`Users frequently compare brands. Publishing direct comparison pages (${b.name} vs competitors) can capture these citation opportunities.`, lift:'+4–7 pts' });
+
+  return recs;
+}
+
+/* ══ RENDER ═════════════════════════════════════ */
+function renderDashboard() {
+  const el = document.getElementById('brands-list');
+  if (!brands.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">◎</div><div class="empty-title">No brands tracked yet</div><p style="margin-bottom:20px">Run your first scan to get a real GEO Score.</p><button class="btn btn-primary" onclick="navTo('newbrand')">Scan my first brand →</button></div>`;
+    return;
+  }
+  el.innerHTML = brands.map(b => {
+    const col = b.score >= 70 ? 'var(--success)' : b.score >= 40 ? 'var(--warn)' : 'var(--danger)';
+    const bg  = b.score >= 70 ? 'var(--success)' : b.score >= 40 ? '#b06010' : 'var(--danger)';
+    const init = b.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    return `<div class="brand-row" onclick="loadBrand(${b.id})">
+      <div class="b-avatar" style="background:${bg}">${init}</div>
+      <div class="b-info"><div class="b-name">${b.name}</div><div class="b-ind">${b.industry} · ${b.domain||'No domain'}</div></div>
+      <div class="b-date">${b.date||''}</div>
+      <div class="b-score" style="color:${col}">${b.score}<div class="b-score-sub">GEO Score</div></div>
+    </div>`;
+  }).join('');
+}
+
+function loadBrand(id) {
+  const b = brands.find(x => x.id == id);
+  if (!b) return;
+  currentBrand = b;
+  renderResultsPage(b); renderRecsPage(b); navTo('results');
+  document.getElementById('nav-results')?.classList.add('active');
+}
+
+function renderResultsPage(b) {
+  document.getElementById('res-title').textContent = b.name + ' · GEO Report';
+  document.getElementById('res-sub').textContent = `Scanned ${b.date||'recently'} · ${b.results.length} Perplexity queries · ${b.industry}`;
+
+  // Ring
+  const score = b.score;
+  document.getElementById('r-score').textContent = score;
+  document.getElementById('r-label').textContent = b.label;
+  document.getElementById('r-summary').textContent = b.summary;
+  const rf = document.getElementById('ring-fill');
+  rf.style.stroke = score >= 70 ? '#1a8a4a' : score >= 40 ? '#b06010' : 'var(--signal)';
+  rf.style.strokeDashoffset = 270.2;
+  setTimeout(() => { rf.style.strokeDashoffset = 270.2 - (score / 100) * 270.2; }, 80);
+
+  // Stats
+  const cited = b.results.filter(r => r.cited).length;
+  const total = b.results.length;
+  const sentMap = { positive:1, neutral:0, negative:-1, not_mentioned:0 };
+  const avgSent = b.results.reduce((s,r) => s + (sentMap[r.sentiment]||0), 0) / total;
+  const sentLabel = avgSent > 0.25 ? 'Positive' : avgSent < -0.15 ? 'Negative' : 'Neutral';
+  const totalSrc = b.results.reduce((s,r) => s + (r.sources?.length||0), 0);
+  const wins = b.analysis.recommendations.filter(r => r.priority==='high').length;
+
+  document.getElementById('s-cited').textContent = `${cited}/${total}`;
+  document.getElementById('s-cited-sub').textContent = Math.round(cited/total*100) + '% citation rate';
+  document.getElementById('s-sent').textContent = sentLabel;
+  document.getElementById('s-sent').style.color = avgSent > 0.25 ? 'var(--success)' : avgSent < -0.15 ? 'var(--danger)' : 'var(--warn)';
+  document.getElementById('s-sent-sub').textContent = (avgSent >= 0 ? '+' : '') + avgSent.toFixed(2) + ' avg';
+  document.getElementById('s-sources').textContent = totalSrc;
+  document.getElementById('s-wins').textContent = wins;
+
+  // Queries
+  document.getElementById('queries-out').innerHTML = b.results.map(r => {
+    const bc = r.cited ? 'b-ok' : (r.sentiment === 'neutral' ? 'b-par' : 'b-no');
+    const bt = r.cited ? '✓ Cited' : '✗ Not cited';
+    const esc = b.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const hl = r.answer ? r.answer.replace(new RegExp(esc,'gi'), m=>`<span class="hl">${m}</span>`) : '';
+    const srcHtml = r.sources?.length ? `<div class="qsources"><div class="qsources-label">Sources cited by Perplexity</div>${r.sources.slice(0,4).map(s => `<a class="source-pill" href="${s.url||'#'}" target="_blank" rel="noopener">↗ ${s.title||s.url||'source'}</a>`).join('')}</div>` : '';
+    return `<div class="qcard">
+      <div class="qtop"><div class="qtext">${r.query}</div><span class="badge ${bc}">${bt}</span></div>
+      <div class="qanswer">${hl.slice(0,480)+(r.answer?.length>480?'…':'')}</div>
+      <div class="qmeta"><span>Sentiment: <strong>${r.sentiment}</strong></span><span>Sources: <strong>${r.sources?.length||0}</strong></span>${r.error?`<span style="color:var(--danger)">Error: ${r.error}</span>`:''}</div>
+      ${srcHtml}
+    </div>`;
+  }).join('');
+
+  // Breakdown
+  document.getElementById('breakdown-out').innerHTML = b.analysis.breakdown.map(d => `
+    <div class="brow">
+      <div class="blabel">${d.label}</div>
+      <div class="btrack"><div class="bfill" style="width:0%" data-w="${d.score}"></div></div>
+      <div class="bval">${d.score}</div>
+    </div>`).join('');
+  setTimeout(() => { document.querySelectorAll('.bfill').forEach(el => { el.style.width = el.dataset.w + '%'; }); }, 100);
+}
+
+function renderRecsPage(b) {
+  const order = { high:0, medium:1, low:2 };
+  const sorted = [...b.analysis.recommendations].sort((a,b) => order[a.priority]-order[b.priority]);
+  document.getElementById('recs-out').innerHTML = sorted.map(r => `
+    <div class="rec-card">
+      <div class="rec-icon">${r.icon}</div>
+      <div class="rec-body">
+        <div class="rec-title">${r.title}</div>
+        <div class="rec-desc">${r.description}</div>
+        <div class="rec-foot">
+          <span class="badge b-${r.priority==='high'?'hi':r.priority==='medium'?'mid':'lo'}">${r.priority} priority</span>
+          <span class="rec-lift">↗ Est. lift: ${r.lift}</span>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+/* ══ UTILS ══════════════════════════════════════ */
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-'+name)?.classList.add('active');
+}
+function clearHistory() {
+  if (!confirm('Clear all scan history?')) return;
+  brands = []; currentBrand = null;
+  localStorage.removeItem('geo_brands');
+  renderDashboard(); navTo('dashboard'); toast('History cleared');
+}
+let _toastTimer;
+function toast(msg, err=false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (err ? ' toast-err' : '');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.className = '', 3000);
+}
+</script>
+</body>
+</html>
