@@ -366,7 +366,7 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
 .member-name{font-size:.85rem;font-weight:500}
 .member-email{font-size:.75rem;color:var(--text2)}
 .role-badge{font-size:.72rem;padding:3px 10px;border-radius:20px;font-weight:500}
-.rb-owner{background:#fef3c7;color:#92400e}
+.rb-admin{background:#fef3c7;color:#92400e}
 .rb-editor{background:var(--blue-light);color:var(--blue)}
 .rb-reader{background:#f3f4f6;color:var(--text2)}
 .rb-pending{background:#f3f4f6;color:var(--text3);font-style:italic}
@@ -566,7 +566,7 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
               </div>
             </div>
           </div>
-          <button class="btn-new" id="btn-new-scan" onclick="if(currentOrg&&['owner','editor'].includes(currentOrg.role)){showScreen('screen-setup');}else{toast('Readers cannot run scans.',true);}">
+          <button class="btn-new" id="btn-new-scan" onclick="if(currentOrg&&['admin','editor'].includes(currentOrg.role)){showScreen('screen-setup');}else{toast('Readers cannot run scans.',true);}">
             <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New scan
           </button>
@@ -634,6 +634,10 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
           <button class="sidebar-nav-item" id="sbnav-settings" onclick="navTo('settings')">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Settings
+          </button>
+          <button class="sidebar-nav-item" onclick="doLogout()" style="color:var(--red);margin-top:2px">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Sign out
           </button>
         </div>
 
@@ -836,74 +840,86 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
 
           <!-- SETTINGS -->
           <div class="page" id="page-settings">
-            <div style="max-width:580px">
-              <div class="section-title" style="margin-bottom:20px">Settings</div>
+            <div style="max-width:540px">
+              <div style="font-size:1.05rem;font-weight:700;margin-bottom:20px">Settings</div>
 
-              <div class="settings-section">
-                <div class="settings-label">OpenRouter API Key</div>
-                <div class="settings-card">
-                  <div class="field" style="margin-bottom:8px">
-                    <label>Token</label>
-                    <input type="password" id="st-key" placeholder="sk-or-v1-..." autocomplete="off"/>
-                    <div class="hint">Find at <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--blue)">openrouter.ai/keys</a></div>
-                  </div>
-                  <div class="key-save-row">
-                    <button class="btn-save-sm" onclick="saveKeyFromSettings()">Save key</button>
-                    <span id="st-status" class="save-status" style="align-self:center"></span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-section">
-                <div class="settings-label">Backend Server URL</div>
-                <div class="settings-card">
-                  <div class="field" style="margin-bottom:8px">
-                    <label>Railway URL</label>
-                    <input type="text" id="st-server" placeholder="https://your-app.up.railway.app"/>
-                  </div>
-                  <div class="key-save-row">
-                    <button class="btn-save-sm" onclick="saveServerUrl()">Save URL</button>
-                    <span id="st-server-status" class="save-status" style="align-self:center"></span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-section">
-                <div class="settings-label">AI Engines (via OpenRouter)</div>
-                <div class="settings-card">
-                  <div class="ai-engines">
-                    <div class="engine-card active">
-                      <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285f4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34a853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#fbbc05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#ea4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                      Gemini
-                      <div class="engine-dot"></div>
-                    </div>
-                    <div class="engine-card active">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#10a37f"/><path d="M7 12.5c0-2.76 2.24-5 5-5s5 2.24 5 5-2.24 5-5 5-5-2.24-5-5z" fill="white"/></svg>
-                      ChatGPT
-                      <div class="engine-dot"></div>
-                    </div>
-                    <div class="engine-card active">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="4" fill="#cc785c"/><text x="4" y="17" font-size="12" fill="white" font-family="serif">A</text></svg>
-                      Claude
-                      <div class="engine-dot"></div>
+              <!-- Account — all roles -->
+              <div class="set-sec">
+                <div class="set-lbl">Account</div>
+                <div class="set-card">
+                  <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+                    <div style="width:44px;height:44px;border-radius:50%;background:var(--blue);color:white;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;flex-shrink:0" id="settings-avatar">Y</div>
+                    <div>
+                      <div style="font-size:.92rem;font-weight:600" id="settings-user-name">—</div>
+                      <div style="font-size:.78rem;color:var(--text2);margin-top:1px" id="settings-user-email">—</div>
+                      <div style="margin-top:5px"><span id="settings-role-badge" class="role-badge rb-admin">Admin</span></div>
                     </div>
                   </div>
-                  <div style="font-size:.75rem;color:var(--text3);margin-top:10px">Active engines are queried directly via OpenRouter API.</div>
+                  <button onclick="doLogout()" style="display:flex;align-items:center;gap:6px;padding:8px 16px;border:1px solid #fca5a5;border-radius:6px;color:var(--red);background:white;cursor:pointer;font-size:.82rem;font-family:Inter,sans-serif;font-weight:500">
+                    <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Sign out
+                  </button>
                 </div>
               </div>
 
-              <div class="settings-section">
-                <div class="settings-label">Data</div>
-                <div class="settings-card" style="display:flex;justify-content:space-between;align-items:center">
-                  <div>
-                    <div style="font-size:.85rem;font-weight:500">Clear scan history</div>
-                    <div style="font-size:.75rem;color:var(--text2);margin-top:2px">Removes all stored brands and reports</div>
-                  </div>
-                  <button onclick="clearHistory()" style="padding:7px 14px;border:1px solid #fca5a5;border-radius:6px;color:var(--red);background:white;cursor:pointer;font-size:.8rem;font-family:'Inter',sans-serif">Clear data</button>
+              <!-- Workspace — all roles -->
+              <div class="set-sec">
+                <div class="set-lbl">Workspace</div>
+                <div class="set-card">
+                  <div style="font-size:.88rem;font-weight:600" id="settings-workspace-name">—</div>
+                  <div style="font-size:.75rem;color:var(--text2);margin-top:3px" id="settings-workspace-role">—</div>
                 </div>
               </div>
+
+              <!-- Admin-only technical settings -->
+              <div id="admin-settings-section" style="display:none">
+                <div class="set-sec">
+                  <div class="set-lbl">OpenRouter API Key</div>
+                  <div class="set-card">
+                    <div class="field" style="margin-bottom:8px">
+                      <label>API Key</label>
+                      <input type="password" id="st-key" placeholder="sk-or-v1-..." autocomplete="off"/>
+                      <div class="hint">Get your key at <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--blue)">openrouter.ai/keys</a> — stored in your browser only</div>
+                    </div>
+                    <div class="key-row"><button class="btn-save" onclick="saveKey()">Save key</button><span id="key-ok" class="save-ok" style="margin-left:8px"></span></div>
+                  </div>
+                </div>
+                <div class="set-sec">
+                  <div class="set-lbl">Backend Server URL</div>
+                  <div class="set-card">
+                    <div class="field" style="margin-bottom:8px">
+                      <label>Server URL</label>
+                      <input type="text" id="st-server" placeholder="https://geometric-api.onrender.com"/>
+                    </div>
+                    <div class="key-row"><button class="btn-save" onclick="saveServer()">Save URL</button><span id="server-ok" class="save-ok" style="margin-left:8px"></span></div>
+                  </div>
+                </div>
+                <div class="set-sec">
+                  <div class="set-lbl">AI Engines</div>
+                  <div class="set-card">
+                    <div class="engine-cards">
+                      <div class="engine-card active">Perplexity Sonar Pro<div class="engine-dot"></div></div>
+                      <div class="engine-card active">GPT-4o Search<div class="engine-dot"></div></div>
+                      <div class="engine-card active">Perplexity Sonar<div class="engine-dot"></div></div>
+                    </div>
+                    <div style="font-size:.75rem;color:var(--text3);margin-top:10px">All engines search the live web before answering.</div>
+                  </div>
+                </div>
+                <div class="set-sec">
+                  <div class="set-lbl">Cache</div>
+                  <div class="set-card" style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                      <div style="font-size:.85rem;font-weight:500">Clear local cache</div>
+                      <div style="font-size:.75rem;color:var(--text2);margin-top:2px">Removes API keys and settings from this browser. Does not delete scan data.</div>
+                    </div>
+                    <button onclick="clearCache()" style="padding:7px 14px;border:1px solid #fca5a5;border-radius:6px;color:var(--red);background:white;cursor:pointer;font-size:.8rem;font-family:'Inter',sans-serif">Clear</button>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
+
 
         </div><!-- /content -->
       </div><!-- /content-shell -->
@@ -1136,20 +1152,24 @@ function renderOrgSwitcher() {
   ).join('');
 
   const role    = currentOrg?.role || 'reader';
-  const canEdit = ['owner','editor'].includes(role);
+  const canEdit = ['admin','editor'].includes(role);
 
-  // New scan button
+  // New scan button — admin/editor only
   const newScanBtn = document.getElementById('btn-new-scan');
   if (newScanBtn) newScanBtn.style.display = canEdit ? '' : 'none';
 
-  // LLM Responses nav
+  // LLM Responses nav — admin/editor only
   const respNav = document.getElementById('sbnav-responses');
   if (respNav) respNav.style.display = canEdit ? '' : 'none';
+
+  // Team nav — admin only
+  const teamNav = document.getElementById('sbnav-members');
+  if (teamNav) teamNav.style.display = isOwner ? '' : 'none';
 
   // Role badge in topbar for non-owners
   const existing = document.getElementById('role-badge-topbar');
   if (existing) existing.remove();
-  if (role !== 'owner') {
+  if (role !== 'admin') {
     const tRight = document.querySelector('.topnav-right');
     if (tRight) {
       const badge = document.createElement('span');
@@ -1190,7 +1210,7 @@ async function createOrg() {
   const slug = name.toLowerCase().replace(/[^a-z0-9]/g,'-') + '-' + Date.now().toString(36);
   const { data: org, error: oErr } = await sb.from('organizations').insert({ name, slug }).select().single();
   if (oErr) return toast(oErr.message, true);
-  await sb.from('org_members').insert({ org_id: org.id, user_id: currentUser.id, role: 'owner', status: 'active' });
+  await sb.from('org_members').insert({ org_id: org.id, user_id: currentUser.id, role: 'admin', status: 'active' });
   closeModal('modal-create-org');
   await loadUserOrgs();
   await switchOrg(org.id);
@@ -1286,7 +1306,7 @@ async function loadDashboard() {
       }
     }
 
-    const canEdit = ['owner','editor'].includes(currentOrg.role);
+    const canEdit = ['admin','editor'].includes(currentOrg.role);
     grid.innerHTML = '<div class="empty" style="grid-column:1/-1">'
       +'<div class="empty-icon">◎</div>'
       +'<div class="empty-title">No reports yet</div>'
@@ -1536,11 +1556,11 @@ async function loadMembers() {
 
   if (error) { console.error('loadMembers:', error); return; }
 
-  const isOwner = currentOrg.role === 'owner';
+  const isOwner = currentOrg.role === 'admin';
   const invSec  = document.getElementById('invite-section');
   if (invSec) invSec.style.display = isOwner ? 'block' : 'none';
 
-  const rc = { owner:'rb-owner', editor:'rb-editor', reader:'rb-reader' };
+  const rc = { owner:'rb-admin', editor:'rb-editor', reader:'rb-reader' };
   const ml = document.getElementById('members-list');
   if (!ml) return;
 
@@ -1548,12 +1568,12 @@ async function loadMembers() {
     const label   = m.invited_email || (m.user_id ? 'User ' + m.user_id.slice(0,8) : 'Unknown');
     const init    = label.charAt(0).toUpperCase();
     const pending = m.status === 'pending';
-    const canRem  = isOwner && m.user_id !== currentUser?.id;
+    const canRem  = isAdmin && m.user_id !== currentUser?.id;
     return '<div class="member-row">'
-      +'<div class="member-av" style="background:'+(m.role==='owner'?'var(--blue)':m.role==='editor'?'var(--green)':'var(--text3)')+'">'+init+'</div>'
+      +'<div class="member-av" style="background:'+(m.role==='admin'?'var(--blue)':m.role==='editor'?'var(--green)':'var(--text3)')+'">'+init+'</div>'
       +'<div class="member-info">'
       +'<div class="member-name">'+label+'</div>'
-      +'<div class="member-email">'+(pending?'Invite pending':'Active member')+'</div>'
+      +'<div class="member-email">'+(pending?'Invite pending':sublabel||'Active member')+'</div>'
       +'</div>'
       +'<span class="role-badge '+(pending?'rb-pending':rc[m.role]||'rb-reader')+'">'+( pending?'pending':m.role )+'</span>'
       +(canRem?'<button data-mid="'+m.id+'" class="rm-btn" style="margin-left:8px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:.78rem;font-family:Inter,sans-serif">Remove</button>':'')
@@ -1589,7 +1609,7 @@ async function generateInviteLink() {
   const email = getEl('inv-email');
   const role  = document.getElementById('inv-role')?.value || 'editor';
   if (!email) return toast("Please enter the invitee's email", true);
-  if (currentOrg?.role !== 'owner') return toast('Only owners can invite members', true);
+  if (currentOrg?.role !== 'admin') return toast('Only admins can invite members', true);
 
   const btn = document.getElementById('inv-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
@@ -1638,8 +1658,34 @@ function applyUserToUI() {
   const name  = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || 'U';
   const email = currentUser?.email || '';
   const init  = name.charAt(0).toUpperCase();
+  const role  = currentOrg?.role || '';
+
+  // Dropdown user info
   setTextContent('dd-user-name', name);
   setTextContent('dd-user-email', email);
+
+  // Settings page
+  setTextContent('settings-user-name', name);
+  setTextContent('settings-user-email', email);
+  setTextContent('settings-workspace-name', currentOrg?.name || '—');
+  setTextContent('settings-workspace-role', 'Role: ' + (role.charAt(0).toUpperCase()+role.slice(1) || '—'));
+
+  // Settings avatar initial
+  const sav = document.getElementById('settings-avatar');
+  if (sav) sav.textContent = init;
+
+  // Role badge in settings
+  const badge = document.getElementById('settings-role-badge');
+  if (badge) {
+    badge.textContent = role.charAt(0).toUpperCase()+role.slice(1) || '—';
+    badge.className = 'role-badge ' + (role==='admin'?'rb-admin':role==='editor'?'rb-editor':'rb-reader');
+  }
+
+  // Show/hide admin settings section
+  const adminSec = document.getElementById('admin-settings-section');
+  if (adminSec) adminSec.style.display = role === 'admin' ? 'block' : 'none';
+
+  // Avatar buttons
   document.querySelectorAll('#user-av-btn, #topnav-avatar').forEach(el => { if(el) el.textContent = init; });
 }
 
@@ -1687,6 +1733,7 @@ function navTo(p) {
     if (p === 'members') loadMembers().catch(e=>console.warn('loadMembers:',e));
     if (p === 'dashboard') loadDashboard().catch(e=>console.warn('loadDashboard:',e));
     if (p === 'history') loadHistory().catch(e=>console.warn('loadHistory:',e));
+    if (p === 'settings') applyUserToUI();
   } catch(e) { console.warn('navTo error:', e); }
 }
 function goDashboard() {
