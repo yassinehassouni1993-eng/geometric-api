@@ -9,10 +9,9 @@ const PORT    = process.env.PORT || 3001;
    ════════════════════════════════════════════════ */
 
 const MODELS = [
-  { id: 'openai/gpt-4o',                    name: 'GPT-4o',       provider: 'openai'    },
-  { id: 'anthropic/claude-haiku-4-5',       name: 'Claude Haiku', provider: 'anthropic' },
-  { id: 'google/gemini-2.0-flash-001',      name: 'Gemini Flash', provider: 'google'    },
-  { id: 'meta-llama/llama-3.3-70b-instruct',name: 'Llama 3.3',   provider: 'meta'      },
+  { id: 'perplexity/sonar-pro',          name: 'Sonar Pro',      provider: 'perplexity', search: true  },
+  { id: 'perplexity/sonar',              name: 'Sonar',          provider: 'perplexity', search: true  },
+  { id: 'openai/gpt-4o-search-preview',  name: 'GPT-4o Search',  provider: 'openai',     search: true  },
 ];
 
 const NUM_QUERIES = 6;
@@ -49,6 +48,52 @@ app.use(express.json());
 // ── Serve frontend ─────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'geometric-app-apify.html')));
 app.get('/health', (req, res) => res.json({ ok: true, models: MODELS.map(m => m.name), weights: WEIGHTS, ts: Date.now() }));
+
+// ── Debug endpoint — test a single model with one query ───────────────────
+// GET /test?brand=Nike&model=0
+app.get('/test', async (req, res) => {
+  if (!OPENROUTER_KEY) return res.status(500).json({ error: 'OPENROUTER_KEY not set' });
+  const brand    = req.query.brand || 'Nike';
+  const modelIdx = parseInt(req.query.model || '0');
+  const model    = MODELS[modelIdx] || MODELS[0];
+  const query    = `What are the pros and cons of ${brand}?`;
+
+  console.log(`\n[TEST] model: ${model.id} | brand: ${brand}`);
+
+  try {
+    const instruction = `\n\nAfter your answer, output ONLY this JSON on a new line:\nGEO_META:{"cited":true,"sentiment":"positive","positioning":"challenger","recommendation":"medium","strengths":["example"],"weaknesses":["example"],"confidence":0.8}`;
+    const messages = model.search
+      ? [{ role: 'user', content: query + instruction }]
+      : [{ role: 'system', content: 'You are helpful.' }, { role: 'user', content: query + instruction }];
+
+    const apiRes = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENROUTER_KEY}`,
+        'HTTP-Referer': 'https://geometric.app',
+        'X-Title': 'GEO metric test'
+      },
+      body: JSON.stringify({ model: model.id, max_tokens: 400, messages })
+    });
+
+    const rawText = await apiRes.text();
+    let parsed = null;
+    try { parsed = JSON.parse(rawText); } catch(e) {}
+
+    res.json({
+      model: model.id,
+      http_status: apiRes.status,
+      raw_truncated: rawText.slice(0, 800),
+      content: parsed?.choices?.[0]?.message?.content?.slice(0, 600) || null,
+      citations: parsed?.citations || [],
+      error: parsed?.error || null
+    });
+
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Main scan endpoint ─────────────────────────────────────────────────────
 app.post('/scan', async (req, res) => {
@@ -162,20 +207,21 @@ function buildQueries(brand, industry, competitors, n) {
 
 /* ════════════════════════════════════════════════
    OPENROUTER CALL
-   Each response self-reports structured metadata
+   Supports web-search models (Perplexity Sonar,
+   GPT-4o Search) which return live web citations
    ════════════════════════════════════════════════ */
 async function runQuery(model, query, brand) {
-  const system = `You are a knowledgeable AI assistant. Answer the user's question naturally and helpfully in 3-5 sentences.
+  const instruction = '\n\nAfter your answer, on a new line output ONLY this JSON (no markdown):\n'
+    + 'GEO_META:{"cited":BOOL,"sentiment":"positive"/"neutral"/"negative","positioning":"leader"/"challenger"/"niche"/"unknown","recommendation":"high"/"medium"/"low"/"none","strengths":["max 3 short phrases"],"weaknesses":["max 3 short phrases"],"confidence":0.0-1.0}\n'
+    + 'Rules: cited=true if you mentioned "' + brand + '" by name. sentiment=your tone toward ' + brand + '. confidence=how sure you are (0-1).';
 
-After your answer, on a new line output ONLY this JSON (no markdown fences):
-GEO_META:{"cited":BOOL,"sentiment":"positive"/"neutral"/"negative","positioning":"leader"/"challenger"/"niche"/"unknown","recommendation":"high"/"medium"/"low"/"none","strengths":["max 3 short phrases"],"weaknesses":["max 3 short phrases"],"confidence":0.0-1.0}
-
-Rules:
-- cited = true if you mentioned "${brand}" by name in your answer
-- sentiment = your overall tone toward ${brand} in the answer
-- positioning = where ${brand} sits in the market based on your knowledge
-- recommendation = how strongly you would recommend ${brand}
-- confidence = how confident you are in your answer (0-1)`;
+  // Search models work better without a system prompt
+  const messages = model.search
+    ? [{ role: 'user', content: query + instruction }]
+    : [
+        { role: 'system', content: 'You are a helpful AI assistant. Answer naturally, then output GEO_META JSON.' },
+        { role: 'user',   content: query + instruction }
+      ];
 
   try {
     const res = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
@@ -186,31 +232,27 @@ Rules:
         'HTTP-Referer': 'https://geometric.app',
         'X-Title': 'GEO metric'
       },
-      body: JSON.stringify({
-        model: model.id,
-        max_tokens: 500,
-        temperature: 0.3,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user',   content: query  }
-        ]
-      })
+      body: JSON.stringify({ model: model.id, max_tokens: 700, messages })
     });
 
     if (!res.ok) {
-      const err = await res.text();
-      console.warn(`  ⚠ ${model.name} | "${query.slice(0,30)}" → HTTP ${res.status}`);
+      const errText = await res.text();
+      console.warn(`  ⚠ ${model.name} | "${query.slice(0,30)}" → HTTP ${res.status}: ${errText.slice(0,120)}`);
       return makeEmpty(model, query);
     }
 
     const data   = await res.json();
     const text   = data.choices?.[0]?.message?.content || '';
+    const citations = extractCitations(data);
     const parts  = text.split('GEO_META:');
     const answer = parts[0].trim();
 
     let meta = { cited: false, sentiment: 'neutral', positioning: 'unknown', recommendation: 'none', strengths: [], weaknesses: [], confidence: 0.7 };
     if (parts.length >= 2) {
-      try { meta = { ...meta, ...JSON.parse(parts[1].trim()) }; } catch(e) {}
+      try {
+        const jsonMatch = parts[1].trim().match(/\{[\s\S]*\}/);
+        if (jsonMatch) meta = { ...meta, ...JSON.parse(jsonMatch[0]) };
+      } catch(e) {}
     }
 
     // Fallback citation check
@@ -218,7 +260,8 @@ Rules:
       meta.cited = new RegExp(brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(answer);
     }
 
-    console.log(`  ✓ ${model.name.padEnd(12)} | cited:${String(meta.cited).padEnd(5)} sent:${meta.sentiment.padEnd(8)} rec:${meta.recommendation}`);
+    console.log(`  ✓ ${model.name.padEnd(14)} | cited:${String(meta.cited).padEnd(5)} sent:${meta.sentiment.padEnd(8)} rec:${meta.recommendation} | ${citations.length} web citations`);
+
     return {
       prompt: query, llm: model.provider, model: model.id, model_name: model.name,
       response_text: answer,
@@ -229,6 +272,7 @@ Rules:
       key_strengths:  meta.strengths  || [],
       key_weaknesses: meta.weaknesses || [],
       cited: meta.cited,
+      citations,
       vs_competitors: {}
     };
 
@@ -237,6 +281,40 @@ Rules:
     return makeEmpty(model, query);
   }
 }
+
+// Extract real citation URLs from search model API responses
+function extractCitations(data) {
+  const citations = [];
+  const seen = new Set();
+
+  function add(url, title) {
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    citations.push({ url, title: title || url });
+  }
+
+  // Perplexity Sonar — citations array at root level
+  (data.citations || []).forEach(c => {
+    if (typeof c === 'string') add(c, c);
+    else if (c.url) add(c.url, c.title);
+  });
+
+  // GPT-4o Search — url_citation annotations
+  const annotations = data.choices?.[0]?.message?.annotations || [];
+  annotations.forEach(a => {
+    if (a.type === 'url_citation' && a.url_citation?.url) {
+      add(a.url_citation.url, a.url_citation.title);
+    }
+  });
+
+  // Inline URLs in response text
+  const text = data.choices?.[0]?.message?.content || '';
+  const urlMatches = text.match(/https?:\/\/[^\s\)\]]+/g) || [];
+  urlMatches.forEach(url => add(url.replace(/[.,;]+$/, ''), url));
+
+  return citations.slice(0, 10);
+}
+
 
 function makeEmpty(model, query) {
   return { prompt: query, llm: model.provider, model: model.id, model_name: model.name,
@@ -359,22 +437,68 @@ function computeGeoScore(dimensions) {
 
 /* ════════════════════════════════════════════════
    RECOMMENDATIONS
-   Each rec is tied to a specific failing dimension
-   Ranked by estimated score impact
+   Context-aware — uses actual brand, industry,
+   real weaknesses from responses, and competitor data
    ════════════════════════════════════════════════ */
 function generateRecommendations(brand, industry, dimensions, perModel, competitors, responses) {
   const recs = [];
 
-  // ── CITATION RATE gaps ──────────────────────────────────────────────────
+  // Extract real weakness themes from actual responses
+  const negResponses = responses.filter(r => r.overall_sentiment === 'negative');
+  const allWeaknesses = responses.flatMap(r => r.key_weaknesses || []);
+  const weaknessFreq = {};
+  allWeaknesses.forEach(w => { weaknessFreq[w] = (weaknessFreq[w]||0)+1; });
+  const topWeaknesses = Object.entries(weaknessFreq).sort((a,b)=>b[1]-a[1]).map(e=>e[0]).slice(0,4);
+
+  // Detect industry type for context-specific language
+  const isFashion    = /fashion|apparel|clothing|wear|streetwear|running|athletic|sport/i.test(industry);
+  const isSaaS       = /saas|software|tech|platform|app|tool|digital/i.test(industry);
+  const isFood       = /food|beverage|restaurant|drink|cafe|coffee/i.test(industry);
+  const isConsulting = /consulting|service|agency|marketing|pr|media/i.test(industry);
+
+  // Helper: get context-specific proof formats
+  function proofFormats() {
+    if (isFashion)    return 'athlete testimonials, styling guides, and community run/event recaps';
+    if (isSaaS)       return 'case studies with metrics, G2/Capterra reviews, and customer success stories';
+    if (isFood)       return 'customer reviews, food blogger features, and social proof from community events';
+    if (isConsulting) return 'client case studies, media mentions, and thought leadership articles';
+    return 'customer testimonials, case studies, and third-party reviews';
+  }
+
+  function contentFormats() {
+    if (isFashion)    return `"${brand} gear guide", "${brand} for [activity] — is it worth it?", and athlete or community feature stories`;
+    if (isSaaS)       return `"What is ${brand}?", "${brand} pricing explained", and "${brand} vs [competitor] — honest comparison"`;
+    if (isFood)       return `"${brand} story and sourcing", menu/product spotlights, and behind-the-scenes content`;
+    if (isConsulting) return `"How ${brand} approaches [specialty]", client success stories, and industry insight pieces`;
+    return `"What is ${brand}?", "pros and cons of ${brand}", and "${brand} for [use case]"`;
+  }
+
+  function authorityTargets() {
+    if (isFashion)    return `running/sports magazines (Runner's World, Outside), gear review sites, and relevant subreddits (r/running, r/Ultramarathon)`;
+    if (isSaaS)       return `G2, Capterra, Product Hunt, and industry blogs in the ${industry} space`;
+    if (isFood)       return `food blogs, local press, and platforms like Yelp, Google Reviews`;
+    if (isConsulting) return `industry publications, LinkedIn articles, and speaking at relevant events`;
+    return `industry publications, review platforms, and relevant directories in the ${industry} space`;
+  }
+
+  function thoughtLeadershipFormat() {
+    if (isFashion)    return `an annual gear roundup, a training guide, or a community race/event that ${brand} owns`;
+    if (isSaaS)       return `an annual industry report, benchmark study, or open-source tool that gets cited`;
+    if (isFood)       return `a sourcing transparency report, seasonal menu guide, or community food event`;
+    if (isConsulting) return `an industry benchmark report, a framework, or a recurring event ${brand} hosts`;
+    return `a definitive guide, annual report, or event that ${brand} owns in the ${industry} space`;
+  }
+
+  // ── CITATION RATE ───────────────────────────────────────────────────────
   if (dimensions.citation_rate.score < 60) {
     const gap = 60 - dimensions.citation_rate.score;
     recs.push({
       dimension: 'citation_rate',
       priority: dimensions.citation_rate.score < 30 ? 'high' : 'medium',
-      title: 'Publish FAQ and definition content',
-      description: `AI models answered ${Math.round((1 - dimensions.citation_rate.score/100)*100)}% of relevant queries without mentioning ${brand}. Create "What is ${brand}?", "How does ${brand} work?" and "Is ${brand} right for me?" pages. These exact formats are what AI models cite.`,
-      action: `Write 3–5 long-form pages targeting the question patterns: "What is [brand]", "pros and cons of [brand]", "[brand] vs competitors".`,
-      lift: `+${Math.round(gap * 0.4)}–${Math.round(gap * 0.6)} pts on Citation Rate`,
+      title: 'Create content AI models can cite directly',
+      description: `${brand} was missing from ${Math.round((1 - dimensions.citation_rate.score/100)*100)}% of relevant AI responses. Models cite what they can find. Publish ${contentFormats()} — these are the exact query formats AI models answer.`,
+      action: `Start with 3 pages: (1) a detailed brand overview, (2) an honest pros/cons breakdown, (3) a comparison page vs your top competitor. Aim for 800+ words each, factual tone.`,
+      lift: `+${Math.round(gap*0.4)}–${Math.round(gap*0.6)} pts on Citation Rate`,
       type: 'Content'
     });
   }
@@ -383,81 +507,79 @@ function generateRecommendations(brand, industry, dimensions, perModel, competit
     recs.push({
       dimension: 'citation_rate',
       priority: 'medium',
-      title: 'Get cited by authoritative third-party sources',
-      description: `AI models cite sources they trust. ${brand} needs mentions in industry publications, review sites, and directories. Even 5–10 high-quality backlinks from trusted domains significantly increases citation rate.`,
-      action: `Target: G2, Capterra, Trustpilot (reviews), industry blogs (guest posts), and press mentions. Each citation source multiplies your visibility across all AI models.`,
+      title: `Get ${brand} mentioned in trusted ${industry} sources`,
+      description: `AI models heavily weight citations from authoritative sources. ${brand} needs to appear in ${authorityTargets()}. Each quality mention multiplies visibility across all AI models simultaneously.`,
+      action: `Identify 10 relevant publications or platforms. Pitch ${brand} for reviews, roundups, or features. One strong feature in the right publication can lift citation rate significantly.`,
       lift: `+5–10 pts on Citation Rate`,
       type: 'Authority'
     });
   }
 
-  // ── SENTIMENT gaps ──────────────────────────────────────────────────────
+  // ── SENTIMENT ───────────────────────────────────────────────────────────
   if (dimensions.sentiment_quality.score < 60) {
-    const negKeywords = responses
-      .filter(r => r.overall_sentiment === 'negative')
-      .flatMap(r => r.key_weaknesses)
-      .slice(0, 3);
+    const weakStr = topWeaknesses.length > 0
+      ? topWeaknesses.join(', ')
+      : 'pricing, availability, or competition';
     recs.push({
       dimension: 'sentiment_quality',
       priority: 'high',
-      title: 'Address negative narrative themes directly',
-      description: `${Math.round((1 - dimensions.sentiment_quality.score/100)*50)}% of AI responses carry negative or neutral sentiment about ${brand}. The recurring themes are: ${negKeywords.join(', ') || 'cost, complexity, competition'}. These need to be addressed with dedicated content.`,
-      action: `Publish direct response content: "Is ${brand} too expensive? Here's the real cost breakdown", customer success stories, and comparison pages showing your advantages.`,
-      lift: `+${Math.round((60 - dimensions.sentiment_quality.score) * 0.5)}–${Math.round((60 - dimensions.sentiment_quality.score) * 0.7)} pts on Sentiment`,
+      title: `Address "${topWeaknesses[0] || 'key weaknesses'}" head-on`,
+      description: `AI models are flagging these specific weaknesses for ${brand}: ${weakStr}. These themes appear in ${negResponses.length} of ${responses.length} responses. The fix is not to ignore them — it's to publish content that reframes or directly addresses each one.`,
+      action: `For each weakness, create one piece of content that addresses it honestly. Example: if "${topWeaknesses[0]}" is flagged, write "${brand} — ${topWeaknesses[0]} explained honestly" with real data and context.`,
+      lift: `+${Math.round((60-dimensions.sentiment_quality.score)*0.5)}–${Math.round((60-dimensions.sentiment_quality.score)*0.7)} pts on Sentiment`,
       type: 'Sentiment'
     });
   }
 
-  // ── RECOMMENDATION gaps ─────────────────────────────────────────────────
+  // ── RECOMMENDATION ──────────────────────────────────────────────────────
   if (dimensions.recommendation_likelihood.score < 60) {
     recs.push({
       dimension: 'recommendation_likelihood',
       priority: dimensions.recommendation_likelihood.score < 30 ? 'high' : 'medium',
-      title: 'Build social proof AI models can cite',
-      description: `AI models are not proactively recommending ${brand} (score: ${dimensions.recommendation_likelihood.score}/100). Models recommend brands they've seen validated by others. Reviews on G2, Capterra and Trustpilot are heavily weighted in AI training data.`,
-      action: `Get 20+ verified reviews on G2 or Capterra. Ask satisfied customers directly. Also publish 2–3 detailed case studies with measurable results — these are cited in "should I use X" queries.`,
-      lift: `+${Math.round((60 - dimensions.recommendation_likelihood.score) * 0.4)}–${Math.round((60 - dimensions.recommendation_likelihood.score) * 0.6)} pts on Recommendation Rate`,
+      title: `Build ${industry}-specific social proof`,
+      description: `AI models recommend brands that have been validated by real people. For ${brand} in ${industry}, the most effective proof formats are: ${proofFormats()}. These get indexed and cited by AI models when users ask "should I buy/use X?"`,
+      action: `Collect and publish 5–10 real customer stories in the next 30 days. Make them specific — "how ${brand} helped me [specific outcome]" performs far better than generic praise.`,
+      lift: `+${Math.round((60-dimensions.recommendation_likelihood.score)*0.4)}–${Math.round((60-dimensions.recommendation_likelihood.score)*0.6)} pts on Recommendation`,
       type: 'Reputation'
     });
   }
 
-  // ── POSITIONING gaps ────────────────────────────────────────────────────
+  // ── POSITIONING ─────────────────────────────────────────────────────────
   if (dimensions.brand_positioning.score < 66) {
     recs.push({
       dimension: 'brand_positioning',
       priority: 'medium',
-      title: `Strengthen ${brand}'s category authority`,
-      description: `AI models currently position ${brand} as "${dimensions.brand_positioning.label.toLowerCase()}" in the ${industry} market. To shift toward "leader", ${brand} needs to own the conversation in its niche with consistent, authoritative content.`,
-      action: `Publish a definitive industry guide or annual report for ${industry}. Get it cited by at least 10 external sources. "Thought leadership" content directly influences how AI models categorize brands.`,
-      lift: `+${Math.round((66 - dimensions.brand_positioning.score) * 0.5)}–${Math.round((66 - dimensions.brand_positioning.score) * 0.7)} pts on Positioning`,
+      title: `Own a specific angle in the ${industry} conversation`,
+      description: `AI models currently see ${brand} as a "${dimensions.brand_positioning.label.toLowerCase()}" — not yet a go-to reference. In ${industry}, owning one specific angle (community, sustainability, performance, design) is more effective than trying to compete on everything.`,
+      action: `Launch ${thoughtLeadershipFormat()}. Promote it until it gets cited by at least 5 external sources. This single asset can shift how AI models categorize ${brand}.`,
+      lift: `+${Math.round((66-dimensions.brand_positioning.score)*0.5)}–${Math.round((66-dimensions.brand_positioning.score)*0.7)} pts on Positioning`,
       type: 'Positioning'
     });
   }
 
-  // ── COMPETITIVE gaps ────────────────────────────────────────────────────
+  // ── COMPETITIVE ─────────────────────────────────────────────────────────
   if (dimensions.competitive_standing.score < 60 && competitors.length > 0) {
+    const compList = competitors.slice(0,3).join(', ');
     recs.push({
       dimension: 'competitive_standing',
       priority: 'medium',
-      title: `Win the "${brand} vs competitors" narrative`,
-      description: `${brand} is underperforming in competitor comparison queries. AI models are favoring competitors when users ask "X vs Y". Dedicated comparison pages directly fix this — they get cited in exactly these queries.`,
-      action: `Create one page per competitor: "${brand} vs ${competitors[0]}", "${brand} vs ${competitors[1] || 'alternatives'}", etc. Be objective and factual — AI models distrust biased content but do cite balanced comparisons.`,
-      lift: `+${Math.round((60 - dimensions.competitive_standing.score) * 0.3)}–${Math.round((60 - dimensions.competitive_standing.score) * 0.5)} pts on Competitive Standing`,
+      title: `Publish honest comparisons vs ${competitors[0]}${competitors[1]?' and '+competitors[1]:''}`,
+      description: `When users ask AI models "${brand} vs ${competitors[0]}?", ${brand} is currently losing that narrative. AI models cite balanced, factual comparison content — not marketing copy. A well-written comparison page gets cited directly in these queries.`,
+      action: `Write one comparison page per competitor (${compList}). Structure: feature comparison table, who each is best for, honest pros/cons of each. Factual tone — AI models distrust one-sided content.`,
+      lift: `+${Math.round((60-dimensions.competitive_standing.score)*0.3)}–${Math.round((60-dimensions.competitive_standing.score)*0.5)} pts on Competitive Standing`,
       type: 'Competitive'
     });
   }
 
-  // ── MODEL-SPECIFIC gaps ─────────────────────────────────────────────────
-  const modelGaps = Object.entries(perModel)
-    .filter(([, v]) => v.score < 50)
-    .map(([k]) => k);
+  // ── MODEL-SPECIFIC ──────────────────────────────────────────────────────
+  const modelGaps = Object.entries(perModel).filter(([,v]) => v.score < 50).map(([k]) => k);
   if (modelGaps.length > 0) {
     recs.push({
       dimension: 'per_model',
       priority: 'low',
-      title: `Improve visibility on ${modelGaps.join(', ')}`,
-      description: `${brand} scores below 50/100 on ${modelGaps.join(' and ')}. Different AI models have different training data emphases. Improving structured data (schema.org) and Wikipedia/Wikidata presence tends to lift scores across all models uniformly.`,
-      action: `Implement Organization schema on your homepage. Add or update your Wikipedia/Wikidata entry. Ensure your Crunchbase, LinkedIn company page and industry directories are complete and consistent.`,
+      title: `Boost visibility on ${modelGaps.map(m=>m.charAt(0).toUpperCase()+m.slice(1)).join(' and ')}`,
+      description: `${brand} scores below 50/100 on ${modelGaps.join(' and ')}. Each AI model has slightly different training data. Structured data and knowledge graph presence (Wikipedia, Wikidata, Crunchbase) improve scores uniformly across all models.`,
+      action: `Add Organization + FAQ schema to your site. Ensure ${brand}'s Wikipedia or Wikidata entry exists and is accurate. Complete your Crunchbase and LinkedIn company pages consistently.`,
       lift: `+3–8 pts on affected models`,
       type: 'Technical'
     });
@@ -467,14 +589,13 @@ function generateRecommendations(brand, industry, dimensions, perModel, competit
   recs.push({
     dimension: 'general',
     priority: 'low',
-    title: 'Add structured data (schema.org)',
-    description: `Schema markup helps AI models accurately identify, describe and categorize ${brand}. Organization, Product, and FAQ schema are the highest-impact for GEO. This is a one-time technical implementation with lasting impact.`,
-    action: `Add Organization schema to homepage, FAQ schema to support/FAQ pages, and Product schema to product pages. Validate at schema.org/validator.`,
+    title: 'Add structured data to help AI models identify your brand',
+    description: `Schema markup tells AI models exactly what ${brand} is, what it offers, and who it's for. This is especially impactful for ${industry} brands where AI models may confuse similar brand names or categories.`,
+    action: `Implement Organization schema (name, logo, description, URL) on your homepage. Add FAQ schema to any Q&A pages. Test at validator.schema.org. One-time effort, lasting GEO impact.`,
     lift: `+2–5 pts across all dimensions`,
     type: 'Technical'
   });
 
-  // Sort: high → medium → low, then by estimated lift (descending)
   const order = { high: 0, medium: 1, low: 2 };
   return recs.sort((a, b) => order[a.priority] - order[b.priority]);
 }
