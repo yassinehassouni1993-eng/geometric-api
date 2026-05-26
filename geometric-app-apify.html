@@ -557,7 +557,7 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
         <svg width="24" height="24" fill="none" stroke="var(--blue)" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></svg>
       </div>
       <div class="scan-title">Analyzing AI visibility…</div>
-      <div class="scan-sub-txt" id="scan-sub-txt">Querying GPT-4o, Claude Haiku, Gemini Flash and Llama 3.3 in parallel. Usually 15–30 seconds.</div>
+      <div class="scan-sub-txt" id="scan-sub-txt">Querying Perplexity Sonar Pro, GPT-4o Search and Perplexity Sonar in parallel. Usually 15–30 seconds.</div>
       <div class="scan-log" id="scan-log"></div>
       <div class="prog-wrap"><div class="prog-fill" id="prog"></div></div>
     </div>
@@ -1437,9 +1437,10 @@ async function saveScanToDB(brandName, domain, industry, market, comp, tagArr, a
   if (!currentOrg) throw new Error('No workspace selected — please log in and select a workspace.');
   if (!currentUser) throw new Error('Not authenticated — please log in again.');
 
-  // Upsert brand
+  // Upsert brand — use maybeSingle() to avoid error when brand doesn't exist
   let brandId;
-  const { data: existing } = await sb.from('brands').select('id').eq('org_id', currentOrg.id).eq('name', brandName).single();
+  const { data: existing } = await sb.from('brands').select('id')
+    .eq('org_id', currentOrg.id).eq('name', brandName).maybeSingle();
   if (existing) {
     brandId = existing.id;
     await sb.from('brands').update({ domain, industry, market, competitors: comp, tags: tagArr }).eq('id', brandId);
@@ -1868,7 +1869,7 @@ async function startScan() {
 
     const base=server.replace(/\/$/,'');
 
-    log(`Querying GPT-4o, Claude Haiku, Gemini Flash, Llama 3.3 in parallel…`,'lc-run');
+    log(`Querying Perplexity Sonar Pro, GPT-4o Search, Perplexity Sonar…`,'lc-run');
     setP(20);
 
     const scanRes=await fetch(`${base}/scan`,{
@@ -1912,9 +1913,10 @@ async function startScan() {
     };
     currentBrand = b;
     renderReport(b);
-    await loadDashboard();
     showScreen('screen-app');
     navTo('overview');
+    // Refresh history in background — don't block the redirect
+    loadHistory().catch(()=>{});
 
   } catch(err) {
     console.error('Scan error:', err);
