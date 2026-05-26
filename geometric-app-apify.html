@@ -1459,20 +1459,28 @@ async function loadBrand(brandId) {
    SAVE SCAN TO SUPABASE
 ═══════════════════════════════════════ */
 async function saveScanToDB(brandName, domain, industry, market, comp, tagArr, analysis, data) {
-  if (!currentOrg) throw new Error('No workspace selected — please log in and select a workspace.');
-  if (!currentUser) throw new Error('Not authenticated — please log in again.');
+  if (!currentOrg) throw new Error('No workspace selected.');
+  if (!currentUser) throw new Error('Not authenticated.');
 
-  // Upsert brand — use maybeSingle() to avoid error when brand doesn't exist
+  console.log('saveScanToDB: org=', currentOrg.id, 'user=', currentUser.id, 'brand=', brandName);
+
+  // Upsert brand
   let brandId;
-  const { data: existing } = await sb.from('brands').select('id')
+  const { data: existing, error: findErr } = await sb.from('brands').select('id')
     .eq('org_id', currentOrg.id).eq('name', brandName).maybeSingle();
+
+  console.log('saveScanToDB: existing brand=', existing, 'findErr=', findErr?.message);
+
   if (existing) {
     brandId = existing.id;
-    await sb.from('brands').update({ domain, industry, market, competitors: comp, tags: tagArr }).eq('id', brandId);
+    const { error: upErr } = await sb.from('brands')
+      .update({ domain, industry, market, competitors: comp, tags: tagArr }).eq('id', brandId);
+    if (upErr) console.warn('Brand update error:', upErr.message);
   } else {
     const { data: newBrand, error: bErr } = await sb.from('brands').insert({
       org_id: currentOrg.id, name: brandName, domain, industry, market, competitors: comp, tags: tagArr
     }).select().single();
+    console.log('saveScanToDB: brand insert=', newBrand?.id, 'err=', bErr?.message);
     if (bErr) throw new Error('Brand save failed: ' + bErr.message);
     brandId = newBrand.id;
   }
@@ -1485,7 +1493,7 @@ async function saveScanToDB(brandName, domain, industry, market, comp, tagArr, a
   });
 
   // Save scan
-  const { data: newScan, error: sErr } = await sb.from('scans').insert({
+  const scanPayload = {
     brand_id: brandId, org_id: currentOrg.id, run_by: currentUser.id,
     score: analysis.score, label: analysis.label, summary: analysis.summary,
     dimensions: analysis.dimensions||{},
@@ -1497,7 +1505,11 @@ async function saveScanToDB(brandName, domain, industry, market, comp, tagArr, a
     },
     citations: allCitations,
     raw_responses: data.raw_responses||[]
-  }).select().single();
+  };
+
+  console.log('saveScanToDB: inserting scan for brand', brandId);
+  const { data: newScan, error: sErr } = await sb.from('scans').insert(scanPayload).select().single();
+  console.log('saveScanToDB: scan insert=', newScan?.id, 'err=', sErr?.message);
   if (sErr) throw new Error('Scan save failed: ' + sErr.message);
   return { brandId, scanId: newScan.id };
 }
