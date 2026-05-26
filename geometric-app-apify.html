@@ -797,14 +797,23 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
                 <div class="sec-title" style="margin-bottom:14px">Members</div>
                 <div id="members-list"><div style="font-size:.83rem;color:var(--text2)">Loading…</div></div>
                 <div id="invite-section" style="display:none">
-                  <div style="font-size:.8rem;font-weight:500;margin-top:16px;margin-bottom:8px">Invite member</div>
+                  <div style="font-size:.8rem;font-weight:600;margin-top:20px;margin-bottom:10px;padding-top:16px;border-top:1px solid var(--border)">Generate invite link</div>
+                  <div style="font-size:.78rem;color:var(--text2);margin-bottom:12px">Share this link with your colleague. They sign up and are automatically added to your workspace.</div>
                   <div class="invite-form">
                     <input type="email" id="inv-email" placeholder="colleague@company.com"/>
                     <select id="inv-role">
                       <option value="editor">Editor</option>
                       <option value="reader">Reader</option>
                     </select>
-                    <button class="btn-invite" id="inv-btn" onclick="inviteMember()">Send invite</button>
+                    <button class="btn-invite" id="inv-btn" onclick="generateInviteLink()">Generate link</button>
+                  </div>
+                  <div id="invite-link-box" style="display:none;margin-top:12px">
+                    <div style="font-size:.78rem;font-weight:500;margin-bottom:6px;color:var(--text2)">Share this link — expires in 7 days:</div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                      <input type="text" id="invite-link-val" readonly style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:.78rem;color:var(--text);font-family:monospace"/>
+                      <button onclick="copyInviteLink()" style="padding:8px 14px;background:var(--blue);color:white;border:none;border-radius:6px;font-size:.78rem;cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">Copy link</button>
+                    </div>
+                    <div id="copy-ok" style="font-size:.75rem;color:var(--green);margin-top:4px;display:none">✓ Copied to clipboard</div>
                   </div>
                 </div>
               </div>
@@ -962,6 +971,17 @@ let userOrgs    = [];
 (async function sbInit() {
   try {
   showScreen('screen-loading');
+
+  // Check for invite token in URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const inviteToken = urlParams.get('invite');
+  if (inviteToken) {
+    // Store token so signup can use it
+    sessionStorage.setItem('pending_invite_token', inviteToken);
+    // Clean URL
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
     currentUser = session.user;
@@ -1011,7 +1031,10 @@ async function doSignup() {
   authErr('signup-error','');
   if (pwd.length < 6) return authErr('signup-error','Password must be at least 6 characters.');
   setBtnLoading('signup-btn', true, 'Creating account…');
-  const { error } = await sb.auth.signUp({ email, password: pwd, options: { data: { full_name: name } } });
+  const invToken = sessionStorage.getItem('pending_invite_token');
+  const metadata = invToken ? { full_name: name, invite_token: invToken } : { full_name: name };
+  const { error } = await sb.auth.signUp({ email, password: pwd, options: { data: metadata } });
+  if (!error && invToken) sessionStorage.removeItem('pending_invite_token');
   setBtnLoading('signup-btn', false, 'Create account');
   if (error) authErr('signup-error', error.message);
   else { authErr('signup-error',''); toast('Account created! Check your email to confirm.'); }
@@ -1469,47 +1492,111 @@ async function loadHistory() {
 async function loadMembers() {
   if (!currentOrg) return;
   setTextContent('members-org-name', currentOrg.name);
-  const { data } = await sb.from('org_members')
+
+  const { data, error } = await sb
+    .from('org_members')
     .select('id, role, status, invited_email, user_id')
     .eq('org_id', currentOrg.id);
 
-  const isOwner = currentOrg.role === 'owner';
-  document.getElementById('invite-section').style.display = isOwner ? 'block' : 'none';
-  const rc = { owner:'rb-owner', editor:'rb-editor', reader:'rb-reader' };
+  if (error) { console.error('loadMembers:', error); return; }
 
-  document.getElementById('members-list').innerHTML = (data||[]).map(m => {
-    const label = m.invited_email || 'Member ' + m.user_id?.slice(0,6);
-    const init  = label.charAt(0).toUpperCase();
+  const isOwner = currentOrg.role === 'owner';
+  const invSec  = document.getElementById('invite-section');
+  if (invSec) invSec.style.display = isOwner ? 'block' : 'none';
+
+  const rc = { owner:'rb-owner', editor:'rb-editor', reader:'rb-reader' };
+  const ml = document.getElementById('members-list');
+  if (!ml) return;
+
+  ml.innerHTML = (data||[]).map(m => {
+    const label   = m.invited_email || (m.user_id ? 'User ' + m.user_id.slice(0,8) : 'Unknown');
+    const init    = label.charAt(0).toUpperCase();
     const pending = m.status === 'pending';
+    const canRem  = isOwner && m.user_id !== currentUser?.id;
     return '<div class="member-row">'
-      +'<div class="member-av">'+init+'</div>'
-      +'<div class="member-info"><div class="member-name">'+label+'</div>'
-      +'<div class="member-email">'+(pending?'Invite pending':'Active')+'</div></div>'
+      +'<div class="member-av" style="background:'+(m.role==='owner'?'var(--blue)':m.role==='editor'?'var(--green)':'var(--text3)')+'">'+init+'</div>'
+      +'<div class="member-info">'
+      +'<div class="member-name">'+label+'</div>'
+      +'<div class="member-email">'+(pending?'Invite pending':'Active member')+'</div>'
+      +'</div>'
       +'<span class="role-badge '+(pending?'rb-pending':rc[m.role]||'rb-reader')+'">'+( pending?'pending':m.role )+'</span>'
-      +(isOwner&&m.user_id!==currentUser?.id?'<button onclick="removeMember(\""+m.id+"\")" style="margin-left:8px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:.78rem;font-family:Inter,sans-serif">Remove</button>':'')
+      +(canRem?'<button data-mid="'+m.id+'" class="rm-btn" style="margin-left:8px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:.78rem;font-family:Inter,sans-serif">Remove</button>':'')
       +'</div>';
   }).join('') || '<div style="font-size:.83rem;color:var(--text2);padding:12px 0">No members yet.</div>';
+
+  ml.querySelectorAll('.rm-btn').forEach(btn =>
+    btn.addEventListener('click', () => removeMember(btn.dataset.mid))
+  );
+
+  // Show pending invites
+  const { data: invites } = await sb.from('invites')
+    .select('id, email, role, expires_at, used_at')
+    .eq('org_id', currentOrg.id)
+    .is('used_at', null)
+    .order('created_at', { ascending: false });
+
+  if (invites && invites.length > 0) {
+    ml.innerHTML += '<div style="font-size:.75rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:16px;margin-bottom:8px">Pending invites</div>'
+      + invites.map(inv => {
+          const expired = new Date(inv.expires_at) < new Date();
+          return '<div class="member-row" style="opacity:'+(expired?'0.5':'1')+'">'
+            +'<div class="member-av" style="background:var(--text3);font-size:.6rem;width:34px;height:34px">INV</div>'
+            +'<div class="member-info"><div class="member-name">'+inv.email+'</div>'
+            +'<div class="member-email">'+(expired?'Link expired':'Pending signup')+'</div></div>'
+            +'<span class="role-badge rb-pending">'+inv.role+'</span>'
+            +'</div>';
+        }).join('');
+  }
 }
 
-async function inviteMember() {
-  const email = getEl('inv-email'), role = document.getElementById('inv-role').value;
-  if (!email) return toast('Please enter an email', true);
-  if (currentOrg?.role !== 'owner') return toast('Only owners can invite', true);
-  document.getElementById('inv-btn').disabled = true;
-  const { error } = await sb.from('org_members').insert({ org_id: currentOrg.id, invited_email: email, role, status: 'pending' });
-  document.getElementById('inv-btn').disabled = false;
+async function generateInviteLink() {
+  const email = getEl('inv-email');
+  const role  = document.getElementById('inv-role')?.value || 'editor';
+  if (!email) return toast("Please enter the invitee's email", true);
+  if (currentOrg?.role !== 'owner') return toast('Only owners can invite members', true);
+
+  const btn = document.getElementById('inv-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+
+  const token   = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+  const expires = new Date(Date.now() + 7*24*60*60*1000).toISOString();
+
+  const { error } = await sb.from('invites').insert({
+    org_id: currentOrg.id, email, role, token,
+    created_by: currentUser.id, expires_at: expires
+  });
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Generate link'; }
   if (error) return toast(error.message, true);
-  document.getElementById('inv-email').value = '';
+
+  const server = ls('geo_server') || window.location.origin;
+  const link   = server.replace(/\/$/, '') + '?invite=' + token;
+  const box    = document.getElementById('invite-link-box');
+  const val    = document.getElementById('invite-link-val');
+  if (box) box.style.display = 'block';
+  if (val) val.value = link;
+
   await loadMembers();
-  toast('Invite recorded for ' + email);
+  toast('Invite link generated ✓');
+}
+
+function copyInviteLink() {
+  const val = document.getElementById('invite-link-val');
+  if (!val) return;
+  navigator.clipboard.writeText(val.value).then(() => {
+    const ok = document.getElementById('copy-ok');
+    if (ok) { ok.style.display='block'; setTimeout(()=>ok.style.display='none',2500); }
+  }).catch(() => { val.select(); document.execCommand('copy'); toast('Link copied ✓'); });
 }
 
 async function removeMember(id) {
-  if (!confirm('Remove this member?')) return;
+  if (!confirm('Remove this member from the workspace?')) return;
   const { error } = await sb.from('org_members').delete().eq('id', id);
   if (error) return toast(error.message, true);
   await loadMembers(); toast('Member removed');
 }
+
+
 
 function applyUserToUI() {
   const name  = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || 'U';
