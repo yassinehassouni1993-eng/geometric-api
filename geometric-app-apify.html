@@ -1153,6 +1153,7 @@ function renderOrgSwitcher() {
 
   const role    = currentOrg?.role || 'reader';
   const canEdit = ['admin','editor'].includes(role);
+  const isAdmin = role === 'admin';
 
   // New scan button — admin/editor only
   const newScanBtn = document.getElementById('btn-new-scan');
@@ -1164,7 +1165,7 @@ function renderOrgSwitcher() {
 
   // Team nav — admin only
   const teamNav = document.getElementById('sbnav-members');
-  if (teamNav) teamNav.style.display = isOwner ? '' : 'none';
+  if (teamNav) teamNav.style.display = isAdmin ? '' : 'none';
 
   // Role badge in topbar for non-owners
   const existing = document.getElementById('role-badge-topbar');
@@ -1556,9 +1557,9 @@ async function loadMembers() {
 
   if (error) { console.error('loadMembers:', error); return; }
 
-  const isOwner = currentOrg.role === 'admin';
+  const isAdmin = currentOrg.role === 'admin';
   const invSec  = document.getElementById('invite-section');
-  if (invSec) invSec.style.display = isOwner ? 'block' : 'none';
+  if (invSec) invSec.style.display = isAdmin ? 'block' : 'none';
 
   const rc = { owner:'rb-admin', editor:'rb-editor', reader:'rb-reader' };
   const ml = document.getElementById('members-list');
