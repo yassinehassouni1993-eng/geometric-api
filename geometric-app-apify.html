@@ -1466,42 +1466,15 @@ async function saveScanToDB(brandName, domain, industry, market, comp, tagArr, a
 
   // Upsert brand
   let brandId;
-  // Brand lookup with 8s timeout
-  let existing = null, findErr = null;
-  try {
-    const findResult = await Promise.race([
-      sb.from('brands').select('id').eq('org_id', currentOrg.id).eq('name', brandName).maybeSingle(),
-      new Promise((_,rej) => setTimeout(() => rej(new Error('brand lookup timeout')), 8000))
-    ]);
-    existing = findResult.data;
-    findErr  = findResult.error;
-  } catch(e) {
-    console.warn('saveScanToDB: brand lookup failed:', e.message, '— will try insert');
-  }
+  // Always insert brand — use upsert to handle duplicates gracefully
+  const { data: upsertedBrand, error: bErr } = await sb.from('brands').upsert(
+    { org_id: currentOrg.id, name: brandName, domain, industry, market, competitors: comp, tags: tagArr },
+    { onConflict: 'org_id,name', ignoreDuplicates: false }
+  ).select('id').single();
 
-  console.log('saveScanToDB: existing brand=', existing, 'findErr=', findErr?.message);
-
-  if (existing) {
-    brandId = existing.id;
-    await sb.from('brands')
-      .update({ domain, industry, market, competitors: comp, tags: tagArr }).eq('id', brandId);
-  } else {
-    // Try insert — if brand already exists it'll return an error we can handle
-    const { data: newBrand, error: bErr } = await sb.from('brands').insert({
-      org_id: currentOrg.id, name: brandName, domain, industry, market, competitors: comp, tags: tagArr
-    }).select().single();
-    console.log('saveScanToDB: brand insert=', newBrand?.id, 'err=', bErr?.message);
-    if (bErr && !bErr.message.includes('duplicate')) throw new Error('Brand save failed: ' + bErr.message);
-    brandId = newBrand?.id || existing?.id;
-    if (!brandId) {
-      // Last resort: fetch the brand by name
-      const { data: fallback } = await sb.from('brands').select('id')
-        .eq('org_id', currentOrg.id).eq('name', brandName).limit(1).single();
-      brandId = fallback?.id;
-    }
-  }
-
-  if (!brandId) throw new Error('Could not create or find brand');
+  console.log('saveScanToDB: brand upsert=', upsertedBrand?.id, 'err=', bErr?.message);
+  if (bErr) throw new Error('Brand save failed: ' + bErr.message);
+  brandId = upsertedBrand.id;
 
   // Extract citations
   const allCitations = [];
