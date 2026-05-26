@@ -97,7 +97,7 @@ app.get('/test', async (req, res) => {
 
 // ── Main scan endpoint ─────────────────────────────────────────────────────
 app.post('/scan', async (req, res) => {
-  const { brand, industry, competitors = [] } = req.body || {};
+  const { brand, industry, competitors = [], description = '', market = '', audience = '', usp = '', language = 'en' } = req.body || {};
   if (!brand)          return res.status(400).json({ error: 'brand is required' });
   if (!OPENROUTER_KEY) return res.status(500).json({ error: 'OPENROUTER_KEY not configured on server' });
 
@@ -179,30 +179,40 @@ app.post('/scan', async (req, res) => {
    QUERY BUILDER
    6 queries designed to cover all 5 dimensions
    ════════════════════════════════════════════════ */
-function buildQueries(brand, industry, competitors, n) {
-  // Base queries — cover all 5 scoring dimensions
+function buildQueries(brand, industry, competitors, n, market = '') {
+  const mkt = market ? ` in ${market}` : '';
   const base = [
-    `What is ${brand} and what do they offer in the ${industry} space?`,
+    `What is ${brand} and what do they offer in the ${industry} space${mkt}?`,
     `What are the pros and cons of ${brand}?`,
-    `Would you recommend ${brand} to someone looking for a solution in ${industry}? Why or why not?`,
+    `Would you recommend ${brand} to someone looking for a ${industry} solution${mkt}? Why or why not?`,
     `What are the main criticisms or weaknesses of ${brand}?`,
-    `Where does ${brand} sit in the ${industry} market — is it a leader, challenger, or niche player?`,
+    `Where does ${brand} sit in the ${industry} market${mkt} — is it a leader, challenger, or niche player?`,
     `What do users say about ${brand}?`,
-    `Is ${brand} worth it in ${new Date().getFullYear()}?`,
-    `Best ${industry} brands right now — does ${brand} make the list?`,
+    `Is ${brand} worth it in ${new Date().getFullYear()}${mkt}?`,
+    `Best ${industry} brands${mkt} right now — does ${brand} make the list?`,
     `Describe ${brand} in 3 words and explain why.`,
-    `What type of customer is ${brand} best suited for?`,
+    `What type of customer is ${brand} best suited for${mkt}?`,
     `${brand} honest review — what should I know before choosing them?`,
   ].slice(0, n);
 
-  // One comparison query per competitor — additive on top of base queries
   const compQueries = competitors.map(comp =>
-    `${brand} vs ${comp} — which would you choose and why? Compare them across quality, price, and use case.`
+    `${brand} vs ${comp} — which would you choose and why? Compare them across quality, price, and use case${mkt}.`
   );
 
   const all = [...base, ...compQueries];
-  console.log(`  Built ${base.length} base queries + ${compQueries.length} competitor queries = ${all.length} total`);
+  console.log(`  Built ${base.length} base + ${compQueries.length} competitor = ${all.length} queries`);
   return all;
+}
+
+// Build rich brand context injected into every LLM system prompt
+function buildBrandContext(brand, description, industry, market, audience, usp, language) {
+  const lines = [`Brand: ${brand}`];
+  if (description) lines.push(`What they do: ${description}`);
+  if (industry)    lines.push(`Industry: ${industry}`);
+  if (market)      lines.push(`Market: ${market}`);
+  if (audience)    lines.push(`Target audience: ${audience}`);
+  if (usp)         lines.push(`What makes them different: ${usp}`);
+  return lines.join('\n');
 }
 
 /* ════════════════════════════════════════════════
@@ -210,8 +220,10 @@ function buildQueries(brand, industry, competitors, n) {
    Supports web-search models (Perplexity Sonar,
    GPT-4o Search) which return live web citations
    ════════════════════════════════════════════════ */
-async function runQuery(model, query, brand) {
-  const instruction = '\n\nAfter your answer, on a new line output ONLY this JSON (no markdown):\n'
+async function runQuery(model, query, brand, brandContext = '', language = 'en') {
+  const langInstruction = language === 'fr' ? 'Answer in French.' : language === 'ar' ? 'Answer in Arabic.' : 'Answer in English.';
+  const contextBlock = brandContext ? `\n\nBrand context (use this to inform your answer):\n${brandContext}` : '';
+  const instruction = contextBlock + '\n\n' + langInstruction + '\n\nAfter your answer, on a new line output ONLY this JSON (no markdown):\n'
     + 'GEO_META:{"cited":BOOL,"sentiment":"positive"/"neutral"/"negative","positioning":"leader"/"challenger"/"niche"/"unknown","recommendation":"high"/"medium"/"low"/"none","strengths":["max 3 short phrases"],"weaknesses":["max 3 short phrases"],"confidence":0.0-1.0}\n'
     + 'Rules: cited=true if you mentioned "' + brand + '" by name. sentiment=your tone toward ' + brand + '. confidence=how sure you are (0-1).';
 
