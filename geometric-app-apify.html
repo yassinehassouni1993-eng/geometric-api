@@ -548,7 +548,6 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
       <!-- Top nav -->
       <div class="topnav">
         <div class="topnav-tabs">
-          <button class="topnav-tab" onclick="goDashboard()">Dashboards</button>
           <button class="topnav-tab active" id="ttab-geo">GEO Analysis</button>
         </div>
         <div class="topnav-right">
@@ -623,10 +622,6 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
             Actions Center
           </button>
           <div class="sidebar-divider"></div>
-          <button class="sidebar-nav-item" id="sbnav-dashboard" onclick="navTo('dashboard')">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-            All brands
-          </button>
           <button class="sidebar-nav-item" id="sbnav-history" onclick="navTo('history')">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             Scan History
@@ -973,7 +968,7 @@ let userOrgs    = [];
     await loadUserOrgs();
     applyUserToUI();
     showScreen('screen-app');
-    navTo('dashboard');
+    navTo('history');
   } else {
     showScreen('screen-login');
   }
@@ -989,7 +984,7 @@ let userOrgs    = [];
       await loadUserOrgs();
       applyUserToUI();
       showScreen('screen-app');
-      navTo('dashboard');
+      navTo('history');
     } else if (event === 'SIGNED_OUT') {
       currentUser = null; currentOrg = null; userOrgs = [];
       showScreen('screen-login');
@@ -1116,7 +1111,7 @@ async function switchOrg(orgId) {
   renderOrgSwitcher();
   currentBrand = null;
   await loadDashboard();
-  navTo('dashboard');
+  navTo('history');
   toast('Switched to ' + currentOrg.name);
 }
 
