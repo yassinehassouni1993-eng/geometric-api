@@ -1594,31 +1594,39 @@ async function loadMembers() {
   if (!currentOrg) return;
   setTextContent('members-org-name', currentOrg.name);
 
-  const { data, error } = await sb
-    .from('org_members')
-    .select('id, role, status, invited_email, user_id')
-    .eq('org_id', currentOrg.id);
-
-  if (error) { console.error('loadMembers:', error); return; }
+  const ml = document.getElementById('members-list');
+  if (!ml) return;
 
   const isAdmin = currentOrg.role === 'admin';
   const invSec  = document.getElementById('invite-section');
   if (invSec) invSec.style.display = isAdmin ? 'block' : 'none';
 
-  const rc = { owner:'rb-admin', editor:'rb-editor', reader:'rb-reader' };
-  const ml = document.getElementById('members-list');
-  if (!ml) return;
+  // Load members
+  const { data, error } = await sb
+    .from('org_members')
+    .select('id, role, status, display_name, email, invited_email, user_id')
+    .eq('org_id', currentOrg.id);
+
+  console.log('loadMembers:', data, error);
+
+  if (error) {
+    ml.innerHTML = '<div style="font-size:.83rem;color:var(--red);padding:12px 0">Error: ' + error.message + '</div>';
+    return;
+  }
+
+  const rc = { admin:'rb-admin', editor:'rb-editor', reader:'rb-reader' };
 
   ml.innerHTML = (data||[]).map(m => {
-    const label   = m.invited_email || (m.user_id ? 'User ' + m.user_id.slice(0,8) : 'Unknown');
-    const init    = label.charAt(0).toUpperCase();
+    const name    = m.display_name || m.email || m.invited_email || (m.user_id ? 'User ' + m.user_id.slice(0,8) : 'Unknown');
+    const email   = m.email || m.invited_email || '';
+    const init    = name.charAt(0).toUpperCase();
     const pending = m.status === 'pending';
     const canRem  = isAdmin && m.user_id !== currentUser?.id;
     return '<div class="member-row">'
       +'<div class="member-av" style="background:'+(m.role==='admin'?'var(--blue)':m.role==='editor'?'var(--green)':'var(--text3)')+'">'+init+'</div>'
       +'<div class="member-info">'
-      +'<div class="member-name">'+label+'</div>'
-      +'<div class="member-email">'+(pending?'Invite pending':sublabel||'Active member')+'</div>'
+      +'<div class="member-name">'+name+'</div>'
+      +'<div class="member-email">'+(pending?'Invite pending':email||'Active member')+'</div>'
       +'</div>'
       +'<span class="role-badge '+(pending?'rb-pending':rc[m.role]||'rb-reader')+'">'+( pending?'pending':m.role )+'</span>'
       +(canRem?'<button data-mid="'+m.id+'" class="rm-btn" style="margin-left:8px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:.78rem;font-family:Inter,sans-serif">Remove</button>':'')
@@ -1629,26 +1637,33 @@ async function loadMembers() {
     btn.addEventListener('click', () => removeMember(btn.dataset.mid))
   );
 
-  // Show pending invites
-  const { data: invites } = await sb.from('invites')
-    .select('id, email, role, expires_at, used_at')
-    .eq('org_id', currentOrg.id)
-    .is('used_at', null)
-    .order('created_at', { ascending: false });
+  // Load pending invites — only if invites table exists
+  try {
+    const { data: invites } = await sb
+      .from('invites')
+      .select('id, email, role, expires_at, used_at')
+      .eq('org_id', currentOrg.id)
+      .is('used_at', null)
+      .order('created_at', { ascending: false });
 
-  if (invites && invites.length > 0) {
-    ml.innerHTML += '<div style="font-size:.75rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:16px;margin-bottom:8px">Pending invites</div>'
-      + invites.map(inv => {
-          const expired = new Date(inv.expires_at) < new Date();
-          return '<div class="member-row" style="opacity:'+(expired?'0.5':'1')+'">'
-            +'<div class="member-av" style="background:var(--text3);font-size:.6rem;width:34px;height:34px">INV</div>'
-            +'<div class="member-info"><div class="member-name">'+inv.email+'</div>'
-            +'<div class="member-email">'+(expired?'Link expired':'Pending signup')+'</div></div>'
-            +'<span class="role-badge rb-pending">'+inv.role+'</span>'
-            +'</div>';
-        }).join('');
+    if (invites && invites.length > 0) {
+      ml.innerHTML += '<div style="font-size:.75rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:16px;margin-bottom:8px">Pending invites</div>'
+        + invites.map(inv => {
+            const expired = new Date(inv.expires_at) < new Date();
+            return '<div class="member-row" style="opacity:'+(expired?'0.5':'1')+'">'
+              +'<div class="member-av" style="background:var(--text3);font-size:.6rem">INV</div>'
+              +'<div class="member-info"><div class="member-name">'+inv.email+'</div>'
+              +'<div class="member-email">'+(expired?'Link expired':'Pending signup')+'</div></div>'
+              +'<span class="role-badge rb-pending">'+inv.role+'</span>'
+              +'</div>';
+          }).join('');
+    }
+  } catch(e) {
+    // invites table might not exist yet — ignore
+    console.log('invites table not ready:', e.message);
   }
 }
+
 
 async function generateInviteLink() {
   const email = getEl('inv-email');
