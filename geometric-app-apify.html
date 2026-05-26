@@ -415,12 +415,12 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
       <div class="auth-field"><label>Email</label><input type="email" id="login-email" placeholder="you@company.com" autocomplete="email"/></div>
       <div class="auth-field"><label>Password</label><input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"/></div>
       <button class="auth-btn" id="login-btn" onclick="doLogin()">Sign in</button>
-      <div class="auth-switch">No account? <a onclick="showScreen('screen-signup')">Sign up</a></div>
+      <div class="auth-switch" style="color:var(--text3);font-size:.78rem">Access by invite only. Contact your workspace owner.</div>
     </div>
   </div>
 </div>
 
-<!-- ── SIGNUP ── -->
+<!-- ── SIGNUP (invite only) ── -->
 <div id="screen-signup" style="display:none">
   <div class="auth-outer">
     <div class="auth-box">
@@ -428,8 +428,8 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
         <div class="auth-logo-icon"><svg width="18" height="18" fill="none" stroke="white" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></svg></div>
         <div class="auth-logo-name">GEO metric</div>
       </div>
-      <div class="auth-title">Create your account</div>
-      <div class="auth-sub">Start tracking your brand's AI visibility.</div>
+      <div class="auth-title">You're invited</div>
+      <div class="auth-sub" id="signup-sub">Create your account to join the workspace.</div>
       <div class="auth-error" id="signup-error"></div>
       <div class="auth-field"><label>Full name</label><input type="text" id="signup-name" placeholder="Your name" autocomplete="name"/></div>
       <div class="auth-field"><label>Email</label><input type="email" id="signup-email" placeholder="you@company.com" autocomplete="email"/></div>
@@ -566,7 +566,7 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
               </div>
             </div>
           </div>
-          <button class="btn-new" id="btn-new-scan" onclick="showScreen('screen-setup')">
+          <button class="btn-new" id="btn-new-scan" onclick="if(currentOrg&&['owner','editor'].includes(currentOrg.role)){showScreen('screen-setup');}else{toast('Readers cannot run scans.',true);}">
             <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New scan
           </button>
@@ -976,10 +976,17 @@ let userOrgs    = [];
   const urlParams = new URLSearchParams(window.location.search);
   const inviteToken = urlParams.get('invite');
   if (inviteToken) {
-    // Store token so signup can use it
+    // Store token for signup
     sessionStorage.setItem('pending_invite_token', inviteToken);
     // Clean URL
     window.history.replaceState({}, '', window.location.pathname);
+    // Sign out any existing session — invite links are for new users
+    await sb.auth.signOut();
+    showScreen('screen-signup');
+    // Pre-fill info banner
+    const sub = document.getElementById('signup-sub');
+    if (sub) sub.textContent = 'You have been invited to join a workspace. Create your account to get started.';
+    return;
   }
 
   const { data: { session } } = await sb.auth.getSession();
@@ -1026,18 +1033,23 @@ async function doLogin() {
 }
 
 async function doSignup() {
+  // Invite-only: block signup without a valid invite token
+  const invToken = sessionStorage.getItem('pending_invite_token');
+  if (!invToken) {
+    authErr('signup-error', 'This platform is invite-only. Please use an invite link from a workspace owner.');
+    return;
+  }
   const name=getEl('signup-name'), email=getEl('signup-email'), pwd=getEl('signup-password');
   if (!name||!email||!pwd) return authErr('signup-error','Please fill in all fields.');
   authErr('signup-error','');
   if (pwd.length < 6) return authErr('signup-error','Password must be at least 6 characters.');
   setBtnLoading('signup-btn', true, 'Creating account…');
-  const invToken = sessionStorage.getItem('pending_invite_token');
-  const metadata = invToken ? { full_name: name, invite_token: invToken } : { full_name: name };
+  const metadata = { full_name: name, invite_token: invToken };
   const { error } = await sb.auth.signUp({ email, password: pwd, options: { data: metadata } });
-  if (!error && invToken) sessionStorage.removeItem('pending_invite_token');
+  if (!error) sessionStorage.removeItem('pending_invite_token');
   setBtnLoading('signup-btn', false, 'Create account');
   if (error) authErr('signup-error', error.message);
-  else { authErr('signup-error',''); toast('Account created! Check your email to confirm.'); }
+  else { authErr('signup-error',''); toast('Account created! You can now sign in.'); showScreen('screen-login'); }
 }
 
 async function doLogout() {
@@ -1114,18 +1126,42 @@ function renderOrgSwitcher() {
   setTextContent('current-org-name', currentOrg?.name || 'No workspace');
   setTextContent('members-org-name', currentOrg?.name || '—');
   setTextContent('dash-org-sub', currentOrg ? currentOrg.name + ' · ' + currentOrg.role : '—');
-  document.getElementById('org-list').innerHTML = userOrgs.map(o =>
-    '<div class="org-dropdown-item'+(o.id===currentOrg?.id?' active':'')+'" onclick="switchOrg(\""+o.id+"\")">'
+
+  const orgList = document.getElementById('org-list');
+  if (orgList) orgList.innerHTML = userOrgs.map(o =>
+    '<div class="org-dropdown-item'+(o.id===currentOrg?.id?' active':'')+'" onclick="switchOrg(\"'+o.id+'\")">'
     +'<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>'
     +o.name+' <span style="font-size:.7rem;color:var(--text3);margin-left:auto">'+o.role+'</span>'
     +'</div>'
   ).join('');
-  const canEdit = currentOrg && ['owner','editor'].includes(currentOrg.role);
+
+  const role    = currentOrg?.role || 'reader';
+  const canEdit = ['owner','editor'].includes(role);
+
+  // New scan button
   const newScanBtn = document.getElementById('btn-new-scan');
   if (newScanBtn) newScanBtn.style.display = canEdit ? '' : 'none';
+
+  // LLM Responses nav
   const respNav = document.getElementById('sbnav-responses');
   if (respNav) respNav.style.display = canEdit ? '' : 'none';
+
+  // Role badge in topbar for non-owners
+  const existing = document.getElementById('role-badge-topbar');
+  if (existing) existing.remove();
+  if (role !== 'owner') {
+    const tRight = document.querySelector('.topnav-right');
+    if (tRight) {
+      const badge = document.createElement('span');
+      badge.id = 'role-badge-topbar';
+      badge.style.cssText = 'font-size:.72rem;padding:3px 10px;border-radius:20px;font-weight:500;background:'
+        +(role==='editor'?'var(--blue-light)':'#f3f4f6')+';color:'+(role==='editor'?'var(--blue)':'var(--text2)');
+      badge.textContent = role.charAt(0).toUpperCase()+role.slice(1);
+      tRight.insertBefore(badge, tRight.firstChild);
+    }
+  }
 }
+
 
 async function switchOrg(orgId) {
   currentOrg = userOrgs.find(o=>o.id===orgId);
