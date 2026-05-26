@@ -507,12 +507,16 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
         <div class="setup-logo-name">GEO metric</div>
       </div>
       <div class="setup-title">Scan your brand's AI visibility</div>
-      <div class="setup-sub">Analyze how ChatGPT, Claude, and Gemini perceive your brand. Get a GEO Score, sentiment breakdown, and optimization actions.</div>
+      <div class="setup-sub">Analyze how AI search engines perceive your brand. Get a GEO Score, sentiment breakdown, and optimization actions.</div>
       <div class="frow">
-        <div class="field"><label>Brand name *</label><input type="text" id="f-brand" placeholder="e.g. Nike"/></div>
-        <div class="field"><label>Website</label><input type="text" id="f-domain" placeholder="nike.com"/></div>
+        <div class="field"><label>Brand name *</label><input type="text" id="f-brand" placeholder="e.g. AMTIC"/></div>
+        <div class="field"><label>Website</label><input type="text" id="f-domain" placeholder="amtic.ma"/></div>
       </div>
-      <div class="field"><label>What does your brand do? *</label><textarea id="f-desc" placeholder="Describe your product, audience, and what makes you different..."></textarea></div>
+      <div class="field">
+        <label>What does your brand do? *</label>
+        <textarea id="f-desc" placeholder="Describe your services, what makes you different, and who you serve. The more detail the better." style="min-height:90px"></textarea>
+        <div class="hint">Injected into every AI query as context — critical for lesser-known brands.</div>
+      </div>
       <div class="frow">
         <div class="field">
           <label>Industry *</label>
@@ -527,22 +531,43 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
             <option>Travel & hospitality</option><option>Other</option>
           </select>
         </div>
-        <div class="field"><label>Market</label><input type="text" id="f-market" placeholder="Morocco, MENA, Global…"/></div>
-      </div>
-      <div class="field">
-        <label>Key topics & keywords</label>
-        <div class="tags-wrap" id="tag-list"></div>
-        <div class="tag-row">
-          <input type="text" id="tag-inp" placeholder="Add a keyword, press Enter"/>
-          <button class="tag-add" onclick="addTag()">Add</button>
+        <div class="field">
+          <label>Market</label>
+          <input type="text" id="f-market" placeholder="Morocco, MENA, Global…"/>
+          <div class="hint">Adds geographic context to all queries.</div>
         </div>
       </div>
-      <div class="field"><label>Competitors (comma-separated)</label><input type="text" id="f-comp" placeholder="Adidas, Puma, New Balance"/></div>
+      <div class="field">
+        <label>Target audience</label>
+        <input type="text" id="f-audience" placeholder="e.g. SMEs in Morocco looking for digital transformation"/>
+        <div class="hint">Who is your brand for? Improves positioning and recommendation scores.</div>
+      </div>
+      <div class="field">
+        <label>Unique value proposition</label>
+        <input type="text" id="f-usp" placeholder="e.g. Only agency combining SEO, video production and paid ads under one roof"/>
+        <div class="hint">What makes you different? Injected into comparison queries.</div>
+      </div>
+      <div class="frow">
+        <div class="field">
+          <label>Query language</label>
+          <select id="f-language">
+            <option value="en">English</option>
+            <option value="fr">French</option>
+            <option value="ar">Arabic</option>
+          </select>
+          <div class="hint">Language AI models will answer in.</div>
+        </div>
+        <div class="field">
+          <label>Competitors (comma-separated)</label>
+          <input type="text" id="f-comp" placeholder="Yadest, Hooked Digital…"/>
+        </div>
+      </div>
       <button class="btn-run" id="scan-btn" onclick="startScan()">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="display:inline;vertical-align:middle;margin-right:6px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         Run AI visibility scan
       </button>
-      <div class="cost-note">Powered by OpenRouter · GPT-4o · Claude Haiku · Gemini Flash · Llama 3.3</div>
+      <div class="cost-note">Powered by Perplexity Sonar Pro · GPT-4o Search · OpenRouter</div>
+
     </div>
   </div>
 </div>
@@ -1804,7 +1829,7 @@ function goDashboard() {
 function newScan() {
   tags = [];
   document.getElementById('tag-list').innerHTML = '';
-  ['f-brand','f-domain','f-desc','f-industry','f-market','f-comp'].forEach(id => setEl(id,''));
+  ['f-brand','f-domain','f-desc','f-industry','f-market','f-comp','f-audience','f-usp'].forEach(id => setEl(id,''));
   showScreen('screen-setup');
 }
 
@@ -1850,6 +1875,8 @@ function setP(p){ document.getElementById('prog').style.width=p+'%'; }
 async function startScan() {
   const brand=getEl('f-brand'), desc=getEl('f-desc'), industry=getEl('f-industry');
   const domain=getEl('f-domain'), market=getEl('f-market'), comp=getEl('f-comp');
+  const audience=getEl('f-audience'), usp=getEl('f-usp');
+  const language=document.getElementById('f-language')?.value||'en';
   const server=ls('geo_server');
   if(!brand) return toast('Please enter a brand name',true);
   if(!desc)  return toast('Please describe your brand',true);
@@ -1874,7 +1901,7 @@ async function startScan() {
 
     const scanRes=await fetch(`${base}/scan`,{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({brand,industry,competitors})
+      body:JSON.stringify({brand,industry,competitors,description:desc,market,audience,usp,language})
     });
     if(!scanRes.ok) throw new Error(`Server error ${scanRes.status}: ${await scanRes.text()}`);
     setP(85);
