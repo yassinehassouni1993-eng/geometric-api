@@ -1968,12 +1968,10 @@ async function startScan() {
     log('Saving to database…','lc-run');
     let brandId = 'local-'+Date.now();
     try {
-      // Refresh session state
-      const { data: { session } } = await sb.auth.getSession();
-      const saveUser = session?.user || currentUser;
+      const saveUser = currentUser;
       const saveOrg  = currentOrg;
       console.log('save: user=', saveUser?.id, 'org=', saveOrg?.id);
-      if (!saveUser || !saveOrg) throw new Error('Session expired — please log in again');
+      if (!saveUser || !saveOrg) throw new Error('Not logged in');
 
       // Upsert brand
       const { data: upserted, error: bErr } = await sb.from('brands').upsert(
