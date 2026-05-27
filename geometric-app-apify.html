@@ -1968,43 +1968,27 @@ async function startScan() {
     log('Saving to database…','lc-run');
     let brandId = 'local-'+Date.now();
     try {
-      const saveUser = currentUser;
-      const saveOrg  = currentOrg;
-      console.log('save: user=', saveUser?.id, 'org=', saveOrg?.id);
-      if (!saveUser || !saveOrg) throw new Error('Not logged in');
+      if (!currentUser || !currentOrg) throw new Error('Not logged in');
+      console.log('save: user=', currentUser.id, 'org=', currentOrg.id);
 
-      // Upsert brand
-      const { data: upserted, error: bErr } = await sb.from('brands').upsert(
-        { org_id: saveOrg.id, name: brand, domain, industry, market, competitors: comp, tags: tagArr },
-        { onConflict: 'org_id,name' }
-      ).select('id').single();
-      console.log('save: brand=', upserted?.id, bErr?.message);
-      if (bErr) throw new Error('Brand: ' + bErr.message);
-      brandId = upserted.id;
+      // Get JWT for authenticated server request
+      const { data: { session } } = await sb.auth.getSession();
+      const jwt = session?.access_token || '';
 
-      // Extract citations
-      const seen = new Set(), citations = [];
-      (data.raw_responses||[]).forEach(r =>
-        (r.citations||[]).forEach(c => { if(c.url&&!seen.has(c.url)){seen.add(c.url);citations.push(c);} })
-      );
-
-      // Insert scan
-      const { data: newScan, error: sErr } = await sb.from('scans').insert({
-        brand_id: brandId, org_id: saveOrg.id, run_by: saveUser.id,
-        score: analysis.score, label: analysis.label, summary: analysis.summary,
-        dimensions: analysis.dimensions||{},
-        analysis: {
-          breakdown: analysis.breakdown||[], strengths: analysis.strengths||[],
-          weaknesses: analysis.weaknesses||[], vsComp: analysis.vsComp||{},
-          recommendations: analysis.recommendations||[], themes: analysis.themes||[],
-          sentiment: analysis.sentiment||'neutral', recLikelihood: analysis.recLikelihood||'unknown',
-          positioning: analysis.positioning||'unknown', perLLM: analysis.perLLM||{}, conf: analysis.conf||0
-        },
-        citations, raw_responses: data.raw_responses||[]
-      }).select('id').single();
-      console.log('save: scan=', newScan?.id, sErr?.message);
-      if (sErr) throw new Error('Scan: ' + sErr.message);
-
+      // Save via server endpoint (avoids Supabase JS client hanging)
+      const saveRes = await fetch(base+'/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId: currentOrg.id, userId: currentUser.id,
+          brand, domain, industry, market, comp, tags: tagArr,
+          analysis, rawData: data, userJwt: jwt
+        })
+      });
+      const saveData = await saveRes.json();
+      console.log('save result:', saveData);
+      if (!saveRes.ok || saveData.error) throw new Error(saveData.error || 'Save failed');
+      brandId = saveData.brandId;
       log('Saved to database ✓','lc-ok');
     } catch(dbErr) {
       console.error('DB save error:', dbErr.message);
