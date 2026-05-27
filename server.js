@@ -195,7 +195,8 @@ app.post('/scan', async (req, res) => {
     console.log(`\n▶ Scan: "${brand}" | ${industry} | ${MODELS.length} models × ${NUM_QUERIES} queries`);
 
     // 1. Generate targeted queries covering all 5 scoring dimensions
-    const queries = buildQueries(brand, industry, competitors, NUM_QUERIES);
+    const queries     = buildQueries(brand, industry, competitors, NUM_QUERIES, market, description);
+    const brandContext = buildBrandContext(brand, description, industry, market, audience, usp, language);
 
     // 2. Run all model × query combos in parallel
     const tasks = [];
