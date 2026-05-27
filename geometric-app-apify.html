@@ -1971,18 +1971,14 @@ async function startScan() {
       if (!currentUser || !currentOrg) throw new Error('Not logged in');
       console.log('save: user=', currentUser.id, 'org=', currentOrg.id);
 
-      // Get JWT for authenticated server request
-      const { data: { session } } = await sb.auth.getSession();
-      const jwt = session?.access_token || '';
-
-      // Save via server endpoint (avoids Supabase JS client hanging)
+      // Save via server endpoint — no getSession() call (it hangs)
       const saveRes = await fetch(base+'/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orgId: currentOrg.id, userId: currentUser.id,
           brand, domain, industry, market, comp, tags: tagArr,
-          analysis, rawData: data, userJwt: jwt
+          analysis, rawData: data
         })
       });
       const saveData = await saveRes.json();
