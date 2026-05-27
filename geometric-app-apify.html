@@ -1943,6 +1943,8 @@ async function startScan() {
     setP(8);
 
     const base=server.replace(/\/$/,'');
+    console.log('scan: base=', base, 'brand=', brand);
+    if (!base) { throw new Error('Backend server URL not set — go to Settings and save the URL'); }
 
     log(`Querying Perplexity Sonar Pro, GPT-4o Search, Perplexity Sonar…`,'lc-run');
     setP(20);
