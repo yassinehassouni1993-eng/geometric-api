@@ -4,6 +4,28 @@ const path    = require('path');
 const app     = express();
 const PORT    = process.env.PORT || 3001;
 
+// Supabase client for server-side DB saves (uses service role key, bypasses RLS)
+const SUPABASE_URL     = process.env.SUPABASE_URL     || 'https://oncrbpjupergwbrykamo.supabase.co';
+const SUPABASE_SERVICE = process.env.SUPABASE_SERVICE_KEY || '';
+
+async function sbQuery(method, table, body = null, params = '') {
+  if (!SUPABASE_SERVICE) return { data: null, error: { message: 'SUPABASE_SERVICE_KEY not set' } };
+  const url  = `${SUPABASE_URL}/rest/v1/${table}${params}`;
+  const res  = await fetch(url, {
+    method,
+    headers: {
+      'Content-Type':  'application/json',
+      'apikey':        SUPABASE_SERVICE,
+      'Authorization': `Bearer ${SUPABASE_SERVICE}`,
+      'Prefer':        method === 'POST' ? 'return=representation' : ''
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json();
+  if (!res.ok) return { data: null, error: { message: data.message || data.error || JSON.stringify(data) } };
+  return { data: Array.isArray(data) ? data[0] : data, error: null };
+}
+
 /* ════════════════════════════════════════════════
    CONFIG — edit to change models / query count
    ════════════════════════════════════════════════ */
@@ -47,7 +69,75 @@ app.use(express.json());
 
 // ── Serve frontend ─────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'geometric-app-apify.html')));
-app.get('/health', (req, res) => res.json({ ok: true, models: MODELS.map(m => m.name), weights: WEIGHTS, ts: Date.now() }));
+app.get('/health', (req, res) => res.json({
+  ok: true,
+  models: MODELS.map(m => m.name),
+  weights: WEIGHTS,
+  supabase: !!SUPABASE_SERVICE,
+  ts: Date.now()
+}));
+
+// ── Save scan to Supabase (server-side, uses service role key) ─────────────
+app.post('/save', async (req, res) => {
+  const { orgId, userId, brand, domain, industry, market, comp, tags, analysis, rawData } = req.body || {};
+  if (!orgId || !brand) return res.status(400).json({ error: 'orgId and brand required' });
+  if (!SUPABASE_SERVICE) return res.status(500).json({ error: 'SUPABASE_SERVICE_KEY not configured' });
+
+  try {
+    // Upsert brand
+    const { data: upserted, error: bErr } = await sbQuery(
+      'POST',
+      'brands',
+      { org_id: orgId, name: brand, domain, industry, market, competitors: comp, tags: tags || [] },
+      '?on_conflict=org_id,name'
+    );
+    if (bErr) return res.status(500).json({ error: 'Brand save failed: ' + bErr.message });
+    const brandId = upserted.id;
+
+    // Extract citations
+    const seen = new Set();
+    const citations = [];
+    (rawData?.raw_responses || []).forEach(r => {
+      (r.citations || []).forEach(c => {
+        if (c.url && !seen.has(c.url)) { seen.add(c.url); citations.push(c); }
+      });
+    });
+
+    // Insert scan
+    const { data: scan, error: sErr } = await sbQuery('POST', 'scans', {
+      brand_id:      brandId,
+      org_id:        orgId,
+      run_by:        userId,
+      score:         analysis.score,
+      label:         analysis.label,
+      summary:       analysis.summary,
+      dimensions:    analysis.dimensions || {},
+      analysis: {
+        breakdown:       analysis.breakdown || [],
+        strengths:       analysis.strengths || [],
+        weaknesses:      analysis.weaknesses || [],
+        vsComp:          analysis.vsComp || {},
+        recommendations: analysis.recommendations || [],
+        themes:          analysis.themes || [],
+        sentiment:       analysis.sentiment || 'neutral',
+        recLikelihood:   analysis.recLikelihood || 'unknown',
+        positioning:     analysis.positioning || 'unknown',
+        perLLM:          analysis.perLLM || {},
+        conf:            analysis.conf || 0
+      },
+      citations,
+      raw_responses: rawData?.raw_responses || []
+    });
+    if (sErr) return res.status(500).json({ error: 'Scan save failed: ' + sErr.message });
+
+    console.log(`  ✓ Saved scan ${scan.id} for brand ${brand} (org ${orgId})`);
+    res.json({ ok: true, brandId, scanId: scan.id });
+
+  } catch(err) {
+    console.error('Save error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Debug endpoint — test a single model with one query ───────────────────
 // GET /test?brand=Nike&model=0
@@ -111,7 +201,7 @@ app.post('/scan', async (req, res) => {
     const tasks = [];
     for (const model of MODELS) {
       for (const query of queries) {
-        tasks.push(runQuery(model, query, brand));
+        tasks.push(runQuery(model, query, brand, brandContext, language));
       }
     }
     const raw_responses = await Promise.all(tasks);
