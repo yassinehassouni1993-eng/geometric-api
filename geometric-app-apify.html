@@ -943,6 +943,16 @@ body{font-family:'Inter',sans-serif;background:#f0f2f5;color:#1a1d23;-webkit-fon
               <!-- Admin-only technical settings -->
               <div id="admin-settings-section" style="display:none">
                 <div class="set-sec">
+                  <div class="set-lbl">Database</div>
+                  <div class="set-card" style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                      <div style="font-size:.85rem;font-weight:500">Test database connection</div>
+                      <div style="font-size:.75rem;color:var(--text2);margin-top:2px" id="db-test-result">Click to test if scans can be saved</div>
+                    </div>
+                    <button onclick="testDbSave()" style="padding:7px 14px;border:1px solid var(--border);border-radius:6px;background:white;cursor:pointer;font-size:.8rem;font-family:Inter,sans-serif">Test</button>
+                  </div>
+                </div>
+                <div class="set-sec">
                   <div class="set-lbl">OpenRouter API Key</div>
                   <div class="set-card">
                     <div class="field" style="margin-bottom:8px">
@@ -1743,6 +1753,40 @@ async function removeMember(id) {
 
 
 
+
+async function testDbSave() {
+  const el = document.getElementById('db-test-result');
+  if (el) el.textContent = 'Testing…';
+  try {
+    // Test 1: can we read org_members?
+    const { data: m, error: mErr } = await sb.from('org_members').select('id').limit(1);
+    if (mErr) { if(el) el.textContent = '✗ org_members: ' + mErr.message; return; }
+
+    // Test 2: can we insert a brand?
+    const testName = '__test__' + Date.now();
+    const { data: b, error: bErr } = await sb.from('brands').insert({
+      org_id: currentOrg.id, name: testName, industry: 'test'
+    }).select('id').single();
+    if (bErr) { if(el) el.textContent = '✗ brands insert: ' + bErr.message; return; }
+
+    // Test 3: can we insert a scan?
+    const { data: s, error: sErr } = await sb.from('scans').insert({
+      brand_id: b.id, org_id: currentOrg.id, run_by: currentUser.id,
+      score: 0, label: 'test', dimensions: {}, analysis: {}, citations: [], raw_responses: []
+    }).select('id').single();
+
+    // Cleanup
+    await sb.from('scans').delete().eq('id', s?.id);
+    await sb.from('brands').delete().eq('id', b.id);
+
+    if (sErr) { if(el) el.textContent = '✗ scans insert: ' + sErr.message; return; }
+    if(el) el.textContent = '✓ Database connection working — brands and scans save correctly';
+    toast('Database test passed ✓');
+  } catch(e) {
+    if(el) el.textContent = '✗ Error: ' + e.message;
+  }
+}
+
 function applyUserToUI() {
   const name  = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0] || 'U';
   const email = currentUser?.email || '';
@@ -1916,16 +1960,29 @@ async function startScan() {
     const analysis = mapActorOutput(data);
     setP(95);
 
-    // Save to Supabase
+    // Save to Supabase via server /save endpoint (avoids client-side RLS issues)
     const tagArr = [...tags];
     log('Saving to database…','lc-run');
     let brandId;
     try {
-      const saveResult = await Promise.race([
-        saveScanToDB(brand, domain, industry, market, comp, tagArr, analysis, data),
-        new Promise((_,reject) => setTimeout(() => reject(new Error('Database save timed out after 15s')), 15000))
+      const base = server.replace(/\/$/,'');
+      const saveRes = await Promise.race([
+        fetch(base+'/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orgId:    currentOrg.id,
+            userId:   currentUser.id,
+            brand, domain, industry, market,
+            comp, tags: tagArr,
+            analysis, rawData: data
+          })
+        }),
+        new Promise((_,reject) => setTimeout(() => reject(new Error('Save timed out after 15s')), 15000))
       ]);
-      brandId = saveResult.brandId;
+      const saveData = await saveRes.json();
+      if (!saveRes.ok || saveData.error) throw new Error(saveData.error || 'Save failed');
+      brandId = saveData.brandId;
       log('Saved to database ✓','lc-ok');
     } catch(dbErr) {
       console.error('DB save error:', dbErr);
