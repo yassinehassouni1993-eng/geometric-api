@@ -1,3 +1,4 @@
+// GEO metric server v2.1 — 2026-05-27 21:02
 require('dotenv').config();
 const express = require('express');
 const path    = require('path');
@@ -8,21 +9,26 @@ const PORT    = process.env.PORT || 3001;
 const SUPABASE_URL     = process.env.SUPABASE_URL     || 'https://oncrbpjupergwbrykamo.supabase.co';
 const SUPABASE_SERVICE = process.env.SUPABASE_SERVICE_KEY || '';
 
-async function sbQuery(method, table, body = null, params = '') {
-  if (!SUPABASE_SERVICE) return { data: null, error: { message: 'SUPABASE_SERVICE_KEY not set' } };
+// Use anon key for DB queries — no service role needed since RLS is disabled
+const SUPABASE_ANON = 'sb_publishable_YdrGwgvBFC--mwFsuV_gPA_UOTBpHeg';
+
+async function sbQuery(method, table, body = null, params = '', userJwt = null) {
   const url  = `${SUPABASE_URL}/rest/v1/${table}${params}`;
+  const key  = userJwt || SUPABASE_ANON;
   const res  = await fetch(url, {
     method,
     headers: {
       'Content-Type':  'application/json',
-      'apikey':        SUPABASE_SERVICE,
-      'Authorization': `Bearer ${SUPABASE_SERVICE}`,
+      'apikey':        SUPABASE_ANON,
+      'Authorization': `Bearer ${key}`,
       'Prefer':        method === 'POST' ? 'return=representation' : ''
     },
     body: body ? JSON.stringify(body) : undefined
   });
-  const data = await res.json();
-  if (!res.ok) return { data: null, error: { message: data.message || data.error || JSON.stringify(data) } };
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch(e) { data = text; }
+  if (!res.ok) return { data: null, error: { message: (data?.message || data?.error || text).slice(0,200) } };
   return { data: Array.isArray(data) ? data[0] : data, error: null };
 }
 
@@ -31,9 +37,13 @@ async function sbQuery(method, table, body = null, params = '') {
    ════════════════════════════════════════════════ */
 
 const MODELS = [
-  { id: 'perplexity/sonar-pro',          name: 'Sonar Pro',      provider: 'perplexity', search: true  },
-  { id: 'perplexity/sonar',              name: 'Sonar',          provider: 'perplexity', search: true  },
-  { id: 'openai/gpt-4o-search-preview',  name: 'GPT-4o Search',  provider: 'openai',     search: true  },
+  { id: 'google/gemini-2.0-flash-exp:free',          name: 'Gemini Flash',   provider: 'google',   search: false },
+  { id: 'google/gemini-2.5-flash-preview:free',      name: 'Gemini 2.5',     provider: 'google',   search: false },
+  { id: 'meta-llama/llama-3.3-70b-instruct:free',    name: 'Llama 3.3',      provider: 'meta',     search: false },
+  { id: 'meta-llama/llama-3.1-8b-instruct:free',     name: 'Llama 3.1 8B',   provider: 'meta',     search: false },
+  { id: 'mistralai/mistral-7b-instruct:free',        name: 'Mistral 7B',     provider: 'mistral',  search: false },
+  { id: 'deepseek/deepseek-r1:free',                 name: 'DeepSeek R1',    provider: 'deepseek', search: false },
+  { id: 'qwen/qwen-2.5-72b-instruct:free',           name: 'Qwen 2.5 72B',   provider: 'qwen',     search: false },
 ];
 
 const NUM_QUERIES = 6;
@@ -79,9 +89,8 @@ app.get('/health', (req, res) => res.json({
 
 // ── Save scan to Supabase (server-side, uses service role key) ─────────────
 app.post('/save', async (req, res) => {
-  const { orgId, userId, brand, domain, industry, market, comp, tags, analysis, rawData } = req.body || {};
+  const { orgId, userId, brand, domain, industry, market, comp, tags, analysis, rawData, userJwt } = req.body || {};
   if (!orgId || !brand) return res.status(400).json({ error: 'orgId and brand required' });
-  if (!SUPABASE_SERVICE) return res.status(500).json({ error: 'SUPABASE_SERVICE_KEY not configured' });
 
   try {
     // Upsert brand
@@ -89,7 +98,8 @@ app.post('/save', async (req, res) => {
       'POST',
       'brands',
       { org_id: orgId, name: brand, domain, industry, market, competitors: comp, tags: tags || [] },
-      '?on_conflict=org_id,name'
+      '?on_conflict=org_id,name',
+      userJwt
     );
     if (bErr) return res.status(500).json({ error: 'Brand save failed: ' + bErr.message });
     const brandId = upserted.id;
