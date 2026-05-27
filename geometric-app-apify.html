@@ -1900,13 +1900,13 @@ function renderTags(){
 function saveKeyFromSettings() {
   const k=getEl('st-key'); if(!k) return;
   ls('openrouter_key',k);
-  document.getElementById('st-status').textContent='Saved ✓';
+  const el=document.getElementById('key-ok'); if(el) el.textContent='Saved ✓';
   toast('Key saved ✓');
 }
 function saveServerUrl() {
   const u=getEl('st-server'); if(!u) return;
   ls('geo_server',u);
-  document.getElementById('st-server-status').textContent='Saved ✓';
+  const el2=document.getElementById('server-ok'); if(el2) el2.textContent='Saved ✓';
   toast('URL saved ✓');
 }
 function closeModal(id){ document.getElementById(id)?.classList.remove('open'); }
